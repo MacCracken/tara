@@ -32,7 +32,7 @@ Core library for star classification, stellar evolution, nucleosynthesis, spectr
 
 ```toml
 [dependencies]
-tara = { version = "0.2.0", features = ["soorat-compat"] }
+tara = { version = "1.0.0", features = ["soorat-compat"] }
 ```
 
 ## Consumers
