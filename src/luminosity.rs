@@ -83,23 +83,39 @@ pub fn absolute_magnitude(apparent_mag: f64, distance_pc: f64) -> f64 {
     apparent_mag - distance_modulus(distance_pc)
 }
 
-/// Bolometric correction from effective temperature (K).
+/// Bolometric correction BC_V from effective temperature (K).
 ///
-/// Polynomial fit in log₁₀(T_eff), calibrated to reproduce known values:
-/// Sun (5772 K) → BC ≈ −0.08, Vega (9600 K) → BC ≈ −0.3,
-/// cool M-dwarf (3200 K) → BC ≈ −2.0, hot O-star (40000 K) → BC ≈ −4.0.
+/// Piecewise polynomial in log₁₀(T_eff), following the Flower (1996, ApJ 469, 355)
+/// calibration as tabulated by Torres (2010, AJ 140, 1158) Table 1.
 ///
+/// Three regimes: cool (log T < 3.70), intermediate (3.70–3.90), hot (>3.90).
 /// Valid range: ~3000–50000 K. Returns BC such that M_V = M_bol − BC.
 #[must_use]
 pub fn bolometric_correction(temperature_k: f64) -> f64 {
-    // BC is always negative (or near zero) and reaches minimum near T_eff ~ 6700 K.
-    // Simple quadratic in log(T) centered near the BC minimum.
-    let log_t = temperature_k.log10();
-    // Fit: BC = -a * (log_t - log_t_min)^2 + bc_min
-    // where log_t_min ≈ 3.83 (T ≈ 6760 K), bc_min ≈ -0.01
-    let x = log_t - 3.83;
-    let bc = -7.2 * x * x - 0.01;
-    bc.min(0.0)
+    if temperature_k <= 0.0 {
+        return 0.0;
+    }
+    let lt = temperature_k.log10();
+
+    if lt < 3.70 {
+        // Cool stars: log T < 3.70 (~5000 K)
+        // Polynomial in log T directly
+        -0.118_115_450e6 + 0.137_145_973e6 * lt - 0.636_233_812e5 * lt.powi(2)
+            + 0.147_412_923e5 * lt.powi(3)
+            - 0.170_587_278e4 * lt.powi(4)
+            + 0.788_731_372e2 * lt.powi(5)
+    } else if lt < 3.90 {
+        // Intermediate stars: log T ∈ [3.70, 3.90) (~5000–7940 K)
+        -0.370_510_203e5 + 0.385_672_629e5 * lt - 0.150_651_486e5 * lt.powi(2)
+            + 0.261_724_637e4 * lt.powi(3)
+            - 0.170_623_810e3 * lt.powi(4)
+    } else {
+        // Hot stars: log T ≥ 3.90 (≥ 7940 K)
+        -0.118_115_450e3 + 0.137_145_973e3 * lt - 0.636_233_812e2 * lt.powi(2)
+            + 0.147_412_923e2 * lt.powi(3)
+            - 0.170_587_278e1 * lt.powi(4)
+            + 0.788_731_372e-1 * lt.powi(5)
+    }
 }
 
 #[cfg(test)]

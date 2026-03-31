@@ -213,29 +213,38 @@ impl StarBuilder {
     }
 }
 
-/// Morgan-Keenan spectral classification of stars.
+/// Morgan-Keenan spectral classification of stars and brown dwarfs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[non_exhaustive]
 pub enum SpectralClass {
-    /// O-type: hot, blue, >30,000 K.
+    /// W-type: Wolf-Rayet, >50,000 K.
+    W,
+    /// O-type: hot, blue, 30,000–50,000 K.
     O,
-    /// B-type: blue-white, 10,000-30,000 K.
+    /// B-type: blue-white, 10,000–30,000 K.
     B,
-    /// A-type: white, 7,500-10,000 K.
+    /// A-type: white, 7,500–10,000 K.
     A,
-    /// F-type: yellow-white, 6,000-7,500 K.
+    /// F-type: yellow-white, 6,000–7,500 K.
     F,
-    /// G-type: yellow (Sun-like), 5,200-6,000 K.
+    /// G-type: yellow (Sun-like), 5,200–6,000 K.
     G,
-    /// K-type: orange, 3,700-5,200 K.
+    /// K-type: orange, 3,700–5,200 K.
     K,
-    /// M-type: red, <3,700 K.
+    /// M-type: red, 2,100–3,700 K.
     M,
+    /// L-type: dark red/brown dwarf, 1,300–2,100 K.
+    L,
+    /// T-type: methane dwarf, 500–1,300 K.
+    T,
+    /// Y-type: ultra-cool brown dwarf, <500 K.
+    Y,
 }
 
 impl fmt::Display for SpectralClass {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::W => write!(f, "W"),
             Self::O => write!(f, "O"),
             Self::B => write!(f, "B"),
             Self::A => write!(f, "A"),
@@ -243,6 +252,9 @@ impl fmt::Display for SpectralClass {
             Self::G => write!(f, "G"),
             Self::K => write!(f, "K"),
             Self::M => write!(f, "M"),
+            Self::L => write!(f, "L"),
+            Self::T => write!(f, "T"),
+            Self::Y => write!(f, "Y"),
         }
     }
 }
@@ -264,6 +276,7 @@ mod tests {
     #[test]
     fn spectral_class_serde_roundtrip() {
         for class in [
+            SpectralClass::W,
             SpectralClass::O,
             SpectralClass::B,
             SpectralClass::A,
@@ -271,6 +284,9 @@ mod tests {
             SpectralClass::G,
             SpectralClass::K,
             SpectralClass::M,
+            SpectralClass::L,
+            SpectralClass::T,
+            SpectralClass::Y,
         ] {
             let json = serde_json::to_string(&class).unwrap();
             let back: SpectralClass = serde_json::from_str(&json).unwrap();

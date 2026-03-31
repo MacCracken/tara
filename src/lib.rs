@@ -37,6 +37,9 @@ pub mod atmosphere;
 /// Luminosity, magnitude, and distance calculations.
 pub mod luminosity;
 
+/// Analytic stellar evolution fitting formulae (Tout et al. 1996, Hurley et al. 2000).
+pub mod sse;
+
 /// Optional logging initialization (requires `logging` feature).
 #[cfg(feature = "logging")]
 pub mod logging;

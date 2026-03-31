@@ -72,6 +72,19 @@ pub const T_G_MIN: f64 = 5_200.0;
 pub const T_K_MIN: f64 = 3_700.0;
 // M-type: below T_K_MIN
 
+/// Minimum effective temperature for M-type stars (K).
+/// L-type begins below this boundary.
+pub const T_M_MIN: f64 = 2_100.0;
+/// Minimum effective temperature for L-type (brown dwarfs, K).
+pub const T_L_MIN: f64 = 1_300.0;
+/// Minimum effective temperature for T-type (methane dwarfs, K).
+pub const T_T_MIN: f64 = 500.0;
+// Y-type: below T_T_MIN
+
+/// Minimum effective temperature for Wolf-Rayet (WR) stars (K).
+/// WR stars are hotter than O-type.
+pub const T_W_MIN: f64 = 50_000.0;
+
 #[cfg(test)]
 mod tests {
     use super::*;

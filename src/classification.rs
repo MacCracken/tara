@@ -67,7 +67,9 @@ pub enum HrRegion {
 /// Uses standard Morgan-Keenan temperature boundaries.
 #[must_use]
 pub fn spectral_class_from_temperature(temperature_k: f64) -> SpectralClass {
-    if temperature_k >= constants::T_O_MIN {
+    if temperature_k >= constants::T_W_MIN {
+        SpectralClass::W
+    } else if temperature_k >= constants::T_O_MIN {
         SpectralClass::O
     } else if temperature_k >= constants::T_B_MIN {
         SpectralClass::B
@@ -79,8 +81,14 @@ pub fn spectral_class_from_temperature(temperature_k: f64) -> SpectralClass {
         SpectralClass::G
     } else if temperature_k >= constants::T_K_MIN {
         SpectralClass::K
-    } else {
+    } else if temperature_k >= constants::T_M_MIN {
         SpectralClass::M
+    } else if temperature_k >= constants::T_L_MIN {
+        SpectralClass::L
+    } else if temperature_k >= constants::T_T_MIN {
+        SpectralClass::T
+    } else {
+        SpectralClass::Y
     }
 }
 
@@ -105,13 +113,17 @@ pub fn spectral_subclass(temperature_k: f64) -> u8 {
 #[must_use]
 fn class_temp_range(class: SpectralClass) -> (f64, f64) {
     match class {
-        SpectralClass::O => (50_000.0, constants::T_O_MIN),
+        SpectralClass::W => (100_000.0, constants::T_W_MIN),
+        SpectralClass::O => (constants::T_W_MIN, constants::T_O_MIN),
         SpectralClass::B => (constants::T_O_MIN, constants::T_B_MIN),
         SpectralClass::A => (constants::T_B_MIN, constants::T_A_MIN),
         SpectralClass::F => (constants::T_A_MIN, constants::T_F_MIN),
         SpectralClass::G => (constants::T_F_MIN, constants::T_G_MIN),
         SpectralClass::K => (constants::T_G_MIN, constants::T_K_MIN),
-        SpectralClass::M => (constants::T_K_MIN, 2_000.0),
+        SpectralClass::M => (constants::T_K_MIN, constants::T_M_MIN),
+        SpectralClass::L => (constants::T_M_MIN, constants::T_L_MIN),
+        SpectralClass::T => (constants::T_L_MIN, constants::T_T_MIN),
+        SpectralClass::Y => (constants::T_T_MIN, 250.0),
     }
 }
 
@@ -234,6 +246,19 @@ mod tests {
     fn cool_star_class() {
         assert_eq!(spectral_class_from_temperature(3000.0), SpectralClass::M);
         assert_eq!(spectral_class_from_temperature(4000.0), SpectralClass::K);
+    }
+
+    #[test]
+    fn wolf_rayet_class() {
+        assert_eq!(spectral_class_from_temperature(60_000.0), SpectralClass::W);
+        assert_eq!(spectral_class_from_temperature(50_000.0), SpectralClass::W);
+    }
+
+    #[test]
+    fn brown_dwarf_classes() {
+        assert_eq!(spectral_class_from_temperature(1_800.0), SpectralClass::L);
+        assert_eq!(spectral_class_from_temperature(1_000.0), SpectralClass::T);
+        assert_eq!(spectral_class_from_temperature(400.0), SpectralClass::Y);
     }
 
     #[test]

@@ -4,6 +4,24 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [Unreleased]
+
+### Added
+
+- Soorat integration helpers: `HrDiagramPoint::from_star`, `EvolutionTrack::new`/`push_snapshot`, `SpectralProfile::from_star_blackbody`, `StarField::new`/`push`, `StarViz::from_star` — populate visualization structs from `Star` instances
+- `temperature_to_rgb` — Ballesteros (2012) blackbody color approximation for rendering
+- `temperature_to_bv` — Ballesteros (2012) B-V color index via Newton inversion
+- `StarField` `Default` impl, `len`/`is_empty` on `StarField` and `EvolutionTrack`
+- `sse` module — analytic stellar evolution fitting formulae: `zams_luminosity`, `zams_radius`, `zams_temperature`, `zams_properties` (Tout et al. 1996, MNRAS 281, 257) with full metallicity-dependent coefficients (Z ∈ [0.0001, 0.03])
+- `ZamsProperties` struct with serde support
+- Extended spectral classes: `W` (Wolf-Rayet, >50,000 K), `L` (brown dwarf, 1,300–2,100 K), `T` (methane dwarf, 500–1,300 K), `Y` (ultra-cool, <500 K) — new variants in `SpectralClass` enum with temperature boundaries, classification, and subclass support
+- Temperature boundary constants: `T_W_MIN`, `T_M_MIN`, `T_L_MIN`, `T_T_MIN`
+- Three usage examples: `star_basics`, `spectral_analysis`, `nucleosynthesis`
+
+### Changed
+
+- Bolometric correction now uses Flower (1996) / Torres (2010) piecewise polynomial fit (three regimes: cool/intermediate/hot) replacing the previous rough quadratic approximation
+
 ## [1.0.0] — 2026-03-31
 
 ### Added
