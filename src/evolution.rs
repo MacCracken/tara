@@ -143,22 +143,32 @@ pub fn evolutionary_phase(mass_solar: f64, age_years: f64) -> EvolutionaryPhase 
 
     let t_ms = main_sequence_lifetime(mass_solar);
 
+    // Post-MS phase boundaries are approximate fractions of t_MS.
+    // These will be replaced by SSE-based phase determination once
+    // post-MS fitting formulae are implemented.
+    const F_ZAMS: f64 = 0.001; // ZAMS → MS transition
+    const F_SUBGIANT: f64 = 1.1; // MS → subgiant
+    const F_RGB: f64 = 1.3; // subgiant → RGB
+    const F_HB: f64 = 1.4; // RGB → horizontal branch
+    const F_AGB: f64 = 1.5; // HB → AGB
+    const F_POST_AGB: f64 = 1.6; // AGB → post-AGB (low-mass only)
+
     if age_years < 1e6 {
         // Very young — still contracting
         EvolutionaryPhase::PreMainSequence
-    } else if age_years < t_ms * 0.001 {
+    } else if age_years < t_ms * F_ZAMS {
         EvolutionaryPhase::ZeroAgeMainSequence
     } else if age_years < t_ms {
         EvolutionaryPhase::MainSequence
-    } else if age_years < t_ms * 1.1 {
+    } else if age_years < t_ms * F_SUBGIANT {
         EvolutionaryPhase::Subgiant
-    } else if age_years < t_ms * 1.3 {
+    } else if age_years < t_ms * F_RGB {
         EvolutionaryPhase::RedGiant
-    } else if age_years < t_ms * 1.4 {
+    } else if age_years < t_ms * F_HB {
         EvolutionaryPhase::HorizontalBranch
-    } else if age_years < t_ms * 1.5 {
+    } else if age_years < t_ms * F_AGB {
         EvolutionaryPhase::AsymptoticGiantBranch
-    } else if age_years < t_ms * 1.6 && mass_solar < 8.0 {
+    } else if age_years < t_ms * F_POST_AGB && mass_solar < 8.0 {
         EvolutionaryPhase::PostAgb
     } else if mass_solar < 8.0 {
         EvolutionaryPhase::WhiteDwarf

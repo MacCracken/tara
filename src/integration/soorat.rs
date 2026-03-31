@@ -318,6 +318,9 @@ pub fn temperature_to_bv(temperature_k: f64) -> f64 {
     let mut bv = 0.65; // start near solar
     for _ in 0..20 {
         let f = t_from_bv(bv) - temperature_k;
+        if f.abs() < 0.1 {
+            break; // converged to <0.1 K
+        }
         let df = dt_dbv(bv);
         if df.abs() < 1e-30 {
             break;

@@ -109,7 +109,11 @@ pub fn spectral_subclass(temperature_k: f64) -> u8 {
     sub.min(9)
 }
 
-/// Temperature range (max, min) for a spectral class.
+/// Temperature range for a spectral class, returned as (hottest, coolest).
+///
+/// The first element is the upper (hotter) boundary, the second is the lower
+/// (cooler) boundary. This ordering matches the subclass convention where
+/// subclass 0 is the hottest end.
 #[must_use]
 fn class_temp_range(class: SpectralClass) -> (f64, f64) {
     match class {

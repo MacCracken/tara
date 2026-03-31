@@ -2,7 +2,7 @@ use criterion::{Criterion, black_box, criterion_group, criterion_main};
 use tara::bridge;
 use tara::classification::LuminosityClass;
 use tara::star::{SpectralClass, Star};
-use tara::{atmosphere, evolution, luminosity, nucleosynthesis, spectral};
+use tara::{atmosphere, evolution, luminosity, nucleosynthesis, spectral, sse};
 
 fn bench_star_construction(c: &mut Criterion) {
     c.bench_function("star_new", |b| {
@@ -167,6 +167,40 @@ fn bench_nucleosynthesis(c: &mut Criterion) {
     });
 }
 
+fn bench_sse(c: &mut Criterion) {
+    c.bench_function("sse_zams_luminosity", |b| {
+        b.iter(|| sse::zams_luminosity(black_box(1.0), black_box(0.02)))
+    });
+
+    c.bench_function("sse_zams_radius", |b| {
+        b.iter(|| sse::zams_radius(black_box(1.0), black_box(0.02)))
+    });
+
+    c.bench_function("sse_zams_properties", |b| {
+        b.iter(|| sse::zams_properties(black_box(1.0), black_box(0.02)))
+    });
+
+    c.bench_function("sse_t_bgb", |b| {
+        b.iter(|| sse::t_bgb(black_box(1.0), black_box(0.02)))
+    });
+
+    c.bench_function("sse_ms_lifetime", |b| {
+        b.iter(|| sse::ms_lifetime(black_box(1.0), black_box(0.02)))
+    });
+
+    c.bench_function("sse_tms_luminosity", |b| {
+        b.iter(|| sse::tms_luminosity(black_box(1.0), black_box(0.02)))
+    });
+
+    c.bench_function("sse_tms_radius", |b| {
+        b.iter(|| sse::tms_radius(black_box(1.0), black_box(0.02)))
+    });
+
+    c.bench_function("sse_ms_properties", |b| {
+        b.iter(|| sse::ms_properties(black_box(1.0), black_box(0.02), black_box(4.6e9)))
+    });
+}
+
 criterion_group!(
     benches,
     bench_star_construction,
@@ -176,5 +210,6 @@ criterion_group!(
     bench_evolution,
     bench_spectral,
     bench_nucleosynthesis,
+    bench_sse,
 );
 criterion_main!(benches);

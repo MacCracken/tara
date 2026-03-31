@@ -5,6 +5,7 @@ use tara::evolution;
 use tara::luminosity;
 use tara::nucleosynthesis;
 use tara::spectral;
+use tara::sse;
 use tara::star::{SpectralClass, Star};
 
 #[test]
@@ -182,4 +183,67 @@ fn magnitude_distance_consistency() {
         (m_back - m_abs).abs() < 1e-10,
         "Magnitude roundtrip: {m_abs} → L={l} → {m_back}"
     );
+}
+
+/// SSE: ZAMS → MS evolution → TMS consistency across mass range.
+#[test]
+fn sse_solar_evolution() {
+    let z = sse::Z_SUN;
+
+    // ZAMS properties should be physically reasonable
+    let zams = sse::zams_properties(1.0, z);
+    assert!(zams.luminosity_solar > 0.5 && zams.luminosity_solar < 1.0);
+    assert!(zams.radius_solar > 0.7 && zams.radius_solar < 1.2);
+    assert!(zams.temperature_k > 5000.0 && zams.temperature_k < 6500.0);
+
+    // MS lifetime ~10 Gyr
+    let t_ms = sse::ms_lifetime(1.0, z);
+    assert!(t_ms > 8e9 && t_ms < 13e9, "Solar t_MS: {t_ms:.2e}");
+
+    // Mid-life properties should be between ZAMS and TMS
+    let mid = sse::ms_properties(1.0, z, t_ms * 0.5);
+    assert!(mid.luminosity_solar >= zams.luminosity_solar);
+    assert!(mid.luminosity_solar <= sse::tms_luminosity(1.0, z));
+
+    // TMS should be brighter and larger than ZAMS
+    let l_tms = sse::tms_luminosity(1.0, z);
+    let r_tms = sse::tms_radius(1.0, z);
+    assert!(l_tms > zams.luminosity_solar);
+    assert!(r_tms >= zams.radius_solar);
+}
+
+/// SSE: metallicity effects across the mass range.
+#[test]
+fn sse_metallicity_consistency() {
+    // Lower Z → brighter ZAMS (less opacity)
+    for mass in [0.5, 1.0, 5.0, 10.0] {
+        let l_low = sse::zams_luminosity(mass, 0.001);
+        let l_high = sse::zams_luminosity(mass, 0.02);
+        assert!(
+            l_low > l_high,
+            "M={mass}: low-Z L={l_low} should exceed high-Z L={l_high}"
+        );
+    }
+
+    // Lower Z → shorter MS lifetime (higher L means faster fuel burn)
+    let t_low = sse::ms_lifetime(1.0, 0.001);
+    let t_high = sse::ms_lifetime(1.0, 0.02);
+    assert!(
+        t_low < t_high,
+        "Low-Z lifetime {t_low:.2e} < high-Z {t_high:.2e}"
+    );
+}
+
+/// SSE: mass-luminosity ordering holds for ZAMS, TMS, and mid-MS.
+#[test]
+fn sse_mass_ordering() {
+    let masses = [0.5, 1.0, 2.0, 5.0, 10.0, 20.0];
+    let z = sse::Z_SUN;
+
+    for w in masses.windows(2) {
+        let (m_lo, m_hi) = (w[0], w[1]);
+        assert!(sse::zams_luminosity(m_hi, z) > sse::zams_luminosity(m_lo, z));
+        assert!(sse::tms_luminosity(m_hi, z) > sse::tms_luminosity(m_lo, z));
+        assert!(sse::ms_lifetime(m_hi, z) < sse::ms_lifetime(m_lo, z));
+    }
 }

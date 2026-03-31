@@ -14,6 +14,7 @@ pub const Z_SUN: f64 = 0.02;
 
 /// Metallicity-dependent coefficient: α + βζ + γζ² + δζ³ + εζ⁴.
 #[must_use]
+#[inline]
 fn coeff(c: &[f64; 5], zeta: f64) -> f64 {
     c[0] + zeta * (c[1] + zeta * (c[2] + zeta * (c[3] + zeta * c[4])))
 }
@@ -220,6 +221,7 @@ pub fn zams_temperature(mass: f64, z: f64) -> f64 {
 ///
 /// Convenience function returning all three ZAMS anchors.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct ZamsProperties {
     /// Luminosity in solar luminosities.
     pub luminosity_solar: f64,
@@ -515,6 +517,7 @@ pub fn ms_temperature(mass: f64, z: f64, tau: f64) -> f64 {
 /// Computes τ = age / t_MS, then returns (L, R, T) at that point.
 /// If age > t_MS, clamps to τ = 1.0 (TMS values).
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct MsProperties {
     /// Fractional MS age (0 = ZAMS, 1 = TMS).
     pub tau: f64,
