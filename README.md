@@ -10,15 +10,17 @@ Core library for star classification, stellar evolution, nucleosynthesis, spectr
 
 | Module | Purpose |
 |--------|---------|
-| `star` | Core `Star` type and Morgan-Keenan spectral classes |
+| `star` | Core `Star` type and Morgan-Keenan spectral classes (OBAFGKM + WLTY) |
+| `constants` | Physical and astronomical constants (IAU 2015, CODATA 2018) |
 | `classification` | Hertzsprung-Russell diagram positioning and taxonomy |
 | `evolution` | Main sequence, red giant, white dwarf, supernova tracks |
+| `sse` | Analytic stellar evolution fitting formulae (Tout et al. 1996, Hurley et al. 2000) |
 | `spectral` | Absorption, emission, Doppler shift, line broadening |
 | `nucleosynthesis` | Fusion chains, element production, energy release |
 | `atmosphere` | Opacity, radiative transfer, limb darkening |
 | `luminosity` | Magnitude and distance calculations |
 | `bridge` | Cross-crate primitive-value conversions (falak, prakash, tanmatra) |
-| `integration::soorat` | Visualization structs for soorat rendering (feature-gated) |
+| `integration::soorat` | Visualization structs and SSE evolution tracks for soorat rendering (feature-gated) |
 
 ## Features
 

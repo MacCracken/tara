@@ -199,6 +199,30 @@ fn bench_sse(c: &mut Criterion) {
     c.bench_function("sse_ms_properties", |b| {
         b.iter(|| sse::ms_properties(black_box(1.0), black_box(0.02), black_box(4.6e9)))
     });
+
+    c.bench_function("sse_lbgb", |b| {
+        b.iter(|| sse::lbgb(black_box(1.0), black_box(0.02)))
+    });
+
+    c.bench_function("sse_hg_luminosity", |b| {
+        b.iter(|| sse::hg_luminosity(black_box(1.0), black_box(0.02), black_box(0.5)))
+    });
+
+    c.bench_function("sse_hg_radius", |b| {
+        b.iter(|| sse::hg_radius(black_box(1.0), black_box(0.02), black_box(0.5)))
+    });
+
+    c.bench_function("sse_rgb_luminosity", |b| {
+        b.iter(|| sse::rgb_luminosity(black_box(1.0), black_box(0.02), black_box(0.5)))
+    });
+
+    c.bench_function("sse_rgb_radius", |b| {
+        b.iter(|| sse::rgb_radius(black_box(1.0), black_box(100.0), black_box(0.02)))
+    });
+
+    c.bench_function("sse_evolve", |b| {
+        b.iter(|| sse::evolve(black_box(1.0), black_box(0.02), black_box(4.6e9)))
+    });
 }
 
 criterion_group!(

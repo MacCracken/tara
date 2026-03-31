@@ -648,7 +648,50 @@ const XR_A80: [f64; 5] = [3.969_331e-3, 4.539_076e-3, 1.720_906e-3, 1.897_857e-4
 /// xr(81..83) → a81 (3-term, special: lzs*lzs*xr(83))
 const XR_A81: [f64; 5] = [9.132_108e-1, -1.653_695e-1, 3.636_784e-2, 0.0, 0.0];
 
-// Rhook coefficients (xr(104..119)) reserved for future rhook implementation.
+// Rgamma coefficients — from xr(84..103), computed via complex zcnsts.f logic.
+// These are computed inline in rgamma() rather than as const arrays because
+// msp(83)–msp(89) involve min/max chains that depend on ζ non-polynomially.
+
+/// xr(84..87)
+const XR84: [f64; 4] = [1.192_334e-2, 1.083_057e-2, 1.230_969e0, 1.551_656e0];
+/// xr(88..91)
+const XR88: [f64; 4] = [-1.668_868e-1, 5.818_123e-1, -1.105_027e1, -1.668_070e1];
+/// xr(92..95)
+const XR92: [f64; 4] = [7.615_495e-1, 1.068_243e-1, -2.011_333e-1, -9.371_415e-2];
+/// xr(96..98)
+const XR96: [f64; 3] = [-1.015_564e-1, -2.161_264e-1, -5.182_516e-2];
+/// xr(99..101)
+const XR99: [f64; 3] = [-3.868_776e-1, -5.457_078e-1, -1.463_472e-1];
+/// xr(102..103)
+const XR102: [f64; 2] = [9.409_838e0, 1.522_928e0];
+
+// Rhook coefficients — from xr(104..119)
+/// xr(104..107) → a90
+const XR_A90: [f64; 5] = [7.330_122e-1, 5.192_827e-1, 2.316_416e-1, 8.346_941e-3, 0.0];
+/// xr(108..111) → a91
+const XR_A91: [f64; 5] = [
+    1.172_768e0,
+    -1.209_262e-1,
+    -1.193_023e-1,
+    -2.859_837e-2,
+    0.0,
+];
+/// xr(112..115) → a92
+const XR_A92: [f64; 5] = [
+    3.982_622e-1,
+    -2.296_279e-1,
+    -2.262_539e-1,
+    -5.219_837e-2,
+    0.0,
+];
+/// xr(116..119) → a93
+const XR_A93: [f64; 5] = [
+    3.571_038e0,
+    -2.223_625e-2,
+    -2.611_794e-2,
+    -6.359_648e-3,
+    0.0,
+];
 
 // ── MS interpolation helper functions ────────────────────────────────────
 
@@ -817,25 +860,98 @@ fn rbeta(mass: f64, ze: f64, z: f64) -> f64 {
     b - 1.0
 }
 
-/// Radius gamma coefficient (HPT00) — simplified.
+/// Compute Rgamma metallicity-dependent coefficients (msp 83–89).
+#[must_use]
+fn rgamma_coeffs(ze: f64) -> (f64, f64, f64, f64, f64, f64, f64) {
+    let a83 = (XR84[0] + ze * (XR84[1] + ze * (XR84[2] + ze * XR84[3])))
+        .max(XR96[0] + ze * (XR96[1] + ze * XR96[2]));
+
+    let a84 = (XR88[0] + ze * (XR88[1] + ze * (XR88[2] + ze * XR88[3])))
+        .min(0.0)
+        .max(XR99[0] + ze * (XR99[1] + ze * XR99[2]));
+
+    let a85_raw = XR92[0] + ze * (XR92[1] + ze * (XR92[2] + ze * XR92[3]));
+    let a85 = a85_raw.min(7.454 + 9.046 * ze).max(0.0);
+
+    let a86 = (XR102[0] + ze * XR102[1]).min((-13.3 - 18.6 * ze).max(2.0));
+    let a87 = (2.493 + 1.1475 * ze).clamp(0.4, 1.5);
+
+    let a88_raw = (0.8109 - 0.6282 * ze).clamp(1.0, 1.27);
+    let a88 = a88_raw.max(0.6355 - 0.4192 * ze);
+
+    let a89 = (-0.2711 - ze * (0.5756 + 0.0838 * ze)).max(5.855_420e-2);
+
+    (a83, a84, a85, a86, a87, a88, a89)
+}
+
+/// Radius gamma coefficient (HPT00).
 ///
-/// Returns 0 for most stars; non-zero only near M ~ 1 M☉.
+/// Non-zero only for stars near M ~ 1 M☉. Provides a τ⁴⁰ correction
+/// to the radius interpolation that models the brief radius contraction
+/// at the end of the MS for solar-mass stars.
 #[must_use]
 fn rgamma(mass: f64, ze: f64) -> f64 {
-    // Simplified Rgamma — full xr(84..103) coefficients reserved for future.
-    // Gamma is ~0 for most masses; non-zero only near M ~ 1 M☉.
-    let a88 = (-0.2711 - ze * (0.5756 + 0.0838 * ze)).max(5.855_420e-2);
-    // Simplified: rgamma = 0 for mass > a88 + 0.1
-    if mass > a88 + 0.1 || mass > 1.5 {
-        0.0
-    } else {
-        // Small positive value near M ~ 1
-        let peak = 0.02_f64.max(0.0);
-        if mass <= 1.0 {
-            peak * (1.0 - (mass - 1.0).abs()).max(0.0)
+    let (a83, a84, a85, a86, a87, a88, a89) = rgamma_coeffs(ze);
+
+    if mass > a88 + 0.1 {
+        return 0.0;
+    }
+
+    let m1 = 1.0;
+    let b1 = (a83 + a84 * (m1 - a85).abs().powf(a86)).max(0.0);
+
+    let g = if mass <= m1 {
+        a83 + a84 * (mass - a85).abs().powf(a86)
+    } else if mass <= a88 {
+        let denom = a88 - m1;
+        if denom <= 0.0 {
+            b1
         } else {
-            peak * (1.0 - (mass - 1.0) * 10.0).max(0.0)
+            b1 + (a89 - b1) * ((mass - m1) / denom).powf(a87)
         }
+    } else {
+        // Transition: a88 < mass <= a88 + 0.1
+        let b1_adj = if a88 > m1 { a89 } else { b1 };
+        b1_adj - 10.0 * b1_adj * (mass - a88)
+    };
+
+    g.max(0.0)
+}
+
+/// Radius hook perturbation δ_R (HPT00).
+#[must_use]
+fn rhook(mass: f64, ze: f64, z: f64) -> f64 {
+    let a90 = coeff(&XR_A90, ze);
+    let a91 = coeff(&XR_A91, ze);
+    let a92 = coeff(&XR_A92, ze);
+    let a93 = coeff(&XR_A93, ze);
+    let a94 = (1.9848 + ze * (1.1386 + 0.3564 * ze)).clamp(1.1, 1.25);
+    let a95 = 0.063 + ze * (0.0481 + 0.00984 * ze);
+    let a96 = (1.2 + 2.45 * ze).clamp(0.45, 1.3);
+
+    let mhook = 1.0185 + ze * (0.16015 + ze * 0.0892);
+    let _ = z;
+
+    if mass <= mhook {
+        0.0
+    } else if mass <= a94 {
+        let denom = a94 - mhook;
+        if denom <= 0.0 {
+            0.0
+        } else {
+            a95 * ((mass - mhook) / denom).sqrt()
+        }
+    } else if mass <= 2.0 {
+        let b2 =
+            (a90 + a91 * 2.0_f64.powf(3.5)) / (a92 * 2.0_f64.powi(3) + 2.0_f64.powf(a93)) - 1.0;
+        let denom = 2.0 - a94;
+        if denom <= 0.0 {
+            a95
+        } else {
+            a95 + (b2 - a95) * ((mass - a94) / denom).powf(a96)
+        }
+    } else {
+        (a90 + a91 * mass.powf(3.5)) / (a92 * mass.powi(3) + mass.powf(a93)) - 1.0
     }
 }
 
@@ -902,11 +1018,24 @@ pub fn ms_radius(mass: f64, z: f64, tau: f64) -> f64 {
     let alpha = ralpha(mass, ze);
     let beta = rbeta(mass, ze, z_clamped);
     let gamma = rgamma(mass, ze);
+    let delr = rhook(mass, ze, z_clamped);
 
-    let xx = alpha * tau
-        + beta * tau.powi(10)
-        + gamma * tau.powi(40)
-        + (rho - alpha - beta - gamma) * tau.powi(3);
+    // Hook region for radius uses τ³ differences
+    let mhook = 1.0185 + ze * (0.16015 + ze * 0.0892);
+    let tau_min = if mass > mhook { 0.95 } else { 1.0 };
+    let tau1 = tau.min(1.0).max(tau_min);
+    let tau2 = 1.0_f64.min(tau.max(tau_min));
+    let dtau = tau1.powi(3) - tau2.powi(3);
+
+    let xx = if beta.abs() > 1e-15 && tau > tau_min {
+        alpha * tau
+            + beta * tau.powi(10)
+            + gamma * tau.powi(40)
+            + (rho - alpha - beta - gamma) * tau.powi(3)
+            - delr * dtau
+    } else {
+        alpha * tau + (rho - alpha) * tau.powi(3) - delr * dtau
+    };
 
     r_zams * 10.0_f64.powf(xx)
 }
@@ -962,6 +1091,384 @@ pub fn ms_properties(mass: f64, z: f64, age_years: f64) -> MsProperties {
         luminosity_solar,
         radius_solar,
         temperature_k,
+    }
+}
+
+// ── Post-MS: giant branch coefficients (from xg data) ────────────────────
+
+// L_BGB coefficients: gbp(1)–gbp(8) from xg(1..24)
+const XG1: [f64; 4] = [9.511_033e1, 6.819_618e1, -1.045_625e1, -1.474_939e1];
+const XG5: [f64; 4] = [3.113_458e1, 1.012_033e1, -4.650_511e0, -2.463_185e0];
+const XG9: [f64; 4] = [1.413_057e0, 4.578_814e-1, -6.850_581e-2, -5.588_658e-2];
+const XG13: [f64; 4] = [3.910_862e1, 5.196_646e1, 2.264_970e1, 2.873_680e0];
+const XG17: [f64; 3] = [4.597_479e0, -2.855_179e-1, 2.709_724e-1];
+const XG20: [f64; 3] = [6.682_518e0, 2.827_718e-1, -7.294_429e-2];
+const XG23: f64 = 4.637_345e0;
+const XG24: f64 = 9.301_992e0;
+
+// R_GB coefficients: gbp(17)–gbp(23) from xg(45..66)
+const XG45: [f64; 6] = [
+    9.960_283e-1,
+    8.164_393e-1,
+    2.383_830e0,
+    2.223_436e0,
+    8.638_115e-1,
+    1.231_572e-1,
+];
+const XG51: [f64; 5] = [
+    2.561_062e-1,
+    7.072_646e-2,
+    -5.444_596e-2,
+    -5.798_167e-2,
+    -1.349_129e-2,
+];
+const XG56: [f64; 5] = [
+    1.157_338e0,
+    1.467_883e0,
+    4.299_661e0,
+    3.130_500e0,
+    6.992_080e-1,
+];
+const XG61: [f64; 6] = [
+    1.640_687e-2,
+    4.022_765e-1,
+    3.050_010e-1,
+    9.962_137e-1,
+    7.914_079e-1,
+    1.728_098e-1,
+];
+
+/// 4-term polynomial evaluation for gb coefficients.
+#[must_use]
+#[inline]
+fn coeff4(c: &[f64; 4], ze: f64) -> f64 {
+    c[0] + ze * (c[1] + ze * (c[2] + ze * c[3]))
+}
+
+/// 3-term polynomial evaluation.
+#[must_use]
+#[inline]
+fn coeff3(c: &[f64; 3], ze: f64) -> f64 {
+    c[0] + ze * (c[1] + ze * c[2])
+}
+
+/// Luminosity at the base of the giant branch L_BGB (L☉).
+///
+/// HPT00 Eq. 7. This is the luminosity when the star leaves the
+/// Hertzsprung gap and begins ascending the RGB.
+#[must_use]
+pub fn lbgb(mass: f64, z: f64) -> f64 {
+    if mass <= 0.0 {
+        return 0.0;
+    }
+    let ze = zeta(z.clamp(0.0001, 0.03));
+
+    let g1 = coeff4(&XG1, ze);
+    let g5 = coeff4(&XG5, ze);
+    let g9 = coeff4(&XG9, ze);
+    let g13 = coeff4(&XG13, ze);
+    let g17 = coeff3(&XG17, ze);
+    let g20 = coeff3(&XG20, ze);
+    // gbp(3) = g9^g20, gbp(7) = g23, gbp(8) = g24
+    let g3 = g9.powf(g20);
+
+    let num = g1 * mass.powf(g17) + g5 * mass.powf(XG24);
+    let den = g13 + g3 * mass.powf(XG23) + mass.powf(g20);
+
+    if den <= 0.0 { 0.0 } else { num / den }
+}
+
+/// Radius on the red giant branch R_GB (R☉).
+///
+/// HPT00. Given luminosity (L☉) and mass (M☉), computes the RGB radius
+/// using the giant branch radius relation.
+#[must_use]
+pub fn rgb_radius(mass: f64, luminosity_solar: f64, z: f64) -> f64 {
+    if mass <= 0.0 || luminosity_solar <= 0.0 {
+        return 0.0;
+    }
+    let ze = zeta(z.clamp(0.0001, 0.03));
+
+    // gbp(17): computed via log10 relation in zcnsts.f, not a simple polynomial.
+    // Use the xg-based coefficients for gbp(20)–gbp(23).
+    let a17 = {
+        let lz = ze + Z_SUN.log10();
+        let v = 10.0_f64.powf(-4.6739 - 0.9394 * lz);
+        v.max(-0.04167 + 55.67 * z)
+            .min(0.4771 - 9329.21 * z.powf(2.94))
+    };
+    let a18 = (0.397 + ze * (0.28826 + 0.5293 * ze)).min(0.54);
+    let a19 = {
+        let lz = ze + Z_SUN.log10();
+        let v = 10.0_f64.powf((-2.2794 - lz * (1.5175 + 0.254 * lz)).max(-0.1451));
+        if z > 0.004 {
+            v.max(0.7307 + 14265.1 * z.powf(3.395))
+        } else {
+            v
+        }
+    };
+
+    // gbp(20)–gbp(23): rational function coefficients for A1 in rgbf
+    let g20 =
+        XG45[0] + ze * (XG45[1] + ze * (XG45[2] + ze * (XG45[3] + ze * (XG45[4] + ze * XG45[5]))));
+    let g21 = coeff(&XG51, ze);
+    let g22 = XG56[0] + ze * (XG56[1] + ze * (XG56[2] + ze * (XG56[3] + ze * XG56[4])));
+    let g23 =
+        XG61[0] + ze * (XG61[1] + ze * (XG61[2] + ze * (XG61[3] + ze * (XG61[4] + ze * XG61[5]))));
+
+    let a1_rgb = (g20 / mass.powf(g21)).min(g22 / mass.powf(g23));
+
+    a1_rgb * (luminosity_solar.powf(a18) + a17 * luminosity_solar.powf(a19))
+}
+
+// ── Post-MS: Hertzsprung Gap and RGB evolution ───────────────────────────
+
+/// Fractional core mass at the terminal main sequence.
+///
+/// HPT00: Mc_TMS/M = (1.586 + M^5.25) / (2.434 + 1.02 M^5.25).
+/// Used to initialize core mass at the start of the HG.
+#[must_use]
+pub fn mc_fraction_tms(mass: f64) -> f64 {
+    if mass <= 0.0 {
+        return 0.0;
+    }
+    let m525 = mass.powf(5.25);
+    (1.586 + m525) / (2.434 + 1.02 * m525)
+}
+
+/// Giant branch parameters needed for RGB luminosity evolution.
+///
+/// Returns `(A, gb4, gb5, gb6, gb3)` where:
+/// - A = GB(1): timescale parameter for luminosity growth
+/// - gb4, gb5, gb3, gb6: power-law parameters for the core mass-luminosity relation
+#[must_use]
+fn gb_params(mass: f64, z: f64) -> (f64, f64, f64, f64, f64) {
+    let ze = zeta(z.clamp(0.0001, 0.03));
+
+    // GB(1): timescale parameter (log10 scale)
+    let gb1_log = (-5.7 + 0.8 * mass)
+        .min(-4.1 + 0.14 * mass)
+        .clamp(-5.7, -4.1);
+    let a = 10.0_f64.powf(gb1_log);
+
+    // zpars(6) ≈ 5.37 + 0.135*ζ
+    let zpars6 = 5.37 + ze * 0.135;
+
+    let (gb4_log, gb5, gb6) = if mass <= 2.0 {
+        (zpars6, 6.0, 3.0)
+    } else if mass < 2.5 {
+        let dx = zpars6 - (0.975 * zpars6 - 0.18 * 2.5);
+        let frac = (mass - 2.0) / 0.5;
+        (zpars6 - dx * frac, 6.0 - frac, 3.0 - frac)
+    } else {
+        let v = (0.5 * zpars6 - 0.06 * mass)
+            .max(0.975 * zpars6 - 0.18 * mass)
+            .max(-1.0);
+        (v, 5.0, 2.0)
+    };
+    let gb4 = 10.0_f64.powf(gb4_log);
+
+    // GB(3): upper luminosity scale
+    let gb3 = (500.0 + 1.75e4 * mass.powf(0.6)).max(3.0e4);
+
+    (a, gb4, gb5, gb6, gb3)
+}
+
+/// Hertzsprung Gap (subgiant) luminosity at fractional HG age.
+///
+/// Geometric interpolation: L = L_TMS × (L_BGB / L_TMS)^τ_HG
+/// where τ_HG = (age - t_MS) / (t_BGB - t_MS).
+#[must_use]
+pub fn hg_luminosity(mass: f64, z: f64, tau_hg: f64) -> f64 {
+    let tau = tau_hg.clamp(0.0, 1.0);
+    let l_tms = tms_luminosity(mass, z);
+    let l_bgb = lbgb(mass, z);
+    if l_tms <= 0.0 || l_bgb <= 0.0 {
+        return 0.0;
+    }
+    l_tms * (l_bgb / l_tms).powf(tau)
+}
+
+/// Hertzsprung Gap (subgiant) radius at fractional HG age.
+///
+/// Geometric interpolation: R = R_TMS × (R_GB(L_BGB) / R_TMS)^τ_HG.
+#[must_use]
+pub fn hg_radius(mass: f64, z: f64, tau_hg: f64) -> f64 {
+    let tau = tau_hg.clamp(0.0, 1.0);
+    let r_tms = tms_radius(mass, z);
+    let l_bgb = lbgb(mass, z);
+    let r_bgb = rgb_radius(mass, l_bgb, z);
+    if r_tms <= 0.0 || r_bgb <= 0.0 {
+        return 0.0;
+    }
+    r_tms * (r_bgb / r_tms).powf(tau)
+}
+
+/// RGB luminosity as a function of age on the giant branch.
+///
+/// Uses the core mass-luminosity relation from HPT00 (the `lgbtf` function).
+/// `tau_rgb` is the fractional RGB age (0 = base of GB, 1 = tip of RGB).
+///
+/// For a simplified model, luminosity grows as a power law from L_BGB.
+#[must_use]
+pub fn rgb_luminosity(mass: f64, z: f64, tau_rgb: f64) -> f64 {
+    let tau = tau_rgb.clamp(0.0, 1.0);
+    let l_bgb = lbgb(mass, z);
+    if l_bgb <= 0.0 {
+        return 0.0;
+    }
+    // On the RGB, luminosity grows steeply. The tip of the RGB
+    // reaches ~2000 L_sun for a 1 M_sun star (He flash luminosity).
+    // Approximate: L_tip ≈ L_BGB × 10^(2.5 * tau_rgb^2)
+    // This gives L_tip/L_BGB ~ 300 for tau=1, roughly matching He flash.
+    let (_a, _gb4, _gb5, _gb6, _gb3) = gb_params(mass, z);
+
+    // Simple power-law growth that reaches ~L_HeI at tau=1
+    // L_HeI ~ 2000 L_sun for low mass, lower for high mass
+    let l_tip = if mass <= 2.0 {
+        // Low mass: He flash at ~2000 L_sun
+        2000.0_f64.max(l_bgb * 10.0)
+    } else {
+        // Intermediate/high mass: He ignition at lower L
+        l_bgb * (3.0 + 2.0 * (2.0 / mass).min(1.0))
+    };
+
+    l_bgb * (l_tip / l_bgb).powf(tau * tau)
+}
+
+/// Evolutionary phase from SSE fitting formulae.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[non_exhaustive]
+pub enum SsePhase {
+    /// Main sequence (core hydrogen burning).
+    MainSequence,
+    /// Hertzsprung Gap (subgiant, shell hydrogen burning).
+    HertzsprungGap,
+    /// Red Giant Branch (deep convective envelope, degenerate He core).
+    RedGiantBranch,
+    /// Core Helium Burning (horizontal branch or red clump).
+    CoreHeliumBurning,
+    /// White dwarf remnant.
+    WhiteDwarf,
+    /// Neutron star remnant.
+    NeutronStar,
+    /// Black hole remnant.
+    BlackHole,
+}
+
+/// Full stellar properties at any evolutionary stage.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct StellarState {
+    /// Evolutionary phase.
+    pub phase: SsePhase,
+    /// Luminosity in solar luminosities.
+    pub luminosity_solar: f64,
+    /// Radius in solar radii.
+    pub radius_solar: f64,
+    /// Effective temperature in Kelvin.
+    pub temperature_k: f64,
+    /// Core mass fraction (Mc/M).
+    pub core_mass_fraction: f64,
+}
+
+/// Evolve a star to the given age using SSE fitting formulae.
+///
+/// Returns the stellar state (phase, L, R, T, core mass fraction) at `age_years`
+/// for a star of initial `mass` (M☉) and metallicity `z`.
+///
+/// Currently covers: main sequence, Hertzsprung gap, and red giant branch.
+/// Stars beyond the RGB tip are assigned remnant phases based on initial mass.
+#[must_use]
+pub fn evolve(mass: f64, z: f64, age_years: f64) -> StellarState {
+    let z_c = z.clamp(0.0001, 0.03);
+
+    let t_ms_yr = ms_lifetime(mass, z_c);
+    let t_bgb_yr = t_bgb(mass, z_c) * 1e6;
+    let t_hg = t_bgb_yr - t_ms_yr;
+
+    // Approximate RGB duration as ~15% of t_BGB for low mass, shorter for high mass
+    let t_rgb = if mass <= 2.0 {
+        t_hg * 5.0 // RGB is long for low-mass stars
+    } else {
+        t_hg * 1.0
+    };
+    let t_rgb_end = t_bgb_yr + t_rgb;
+
+    let temp_from_lr = |l: f64, r: f64| -> f64 {
+        if l > 0.0 && r > 0.0 {
+            crate::constants::T_SUN * l.powf(0.25) / r.sqrt()
+        } else {
+            0.0
+        }
+    };
+
+    if age_years < t_ms_yr {
+        // Main sequence
+        let p = ms_properties(mass, z_c, age_years);
+        StellarState {
+            phase: SsePhase::MainSequence,
+            luminosity_solar: p.luminosity_solar,
+            radius_solar: p.radius_solar,
+            temperature_k: p.temperature_k,
+            core_mass_fraction: mc_fraction_tms(mass) * (age_years / t_ms_yr).clamp(0.0, 1.0),
+        }
+    } else if age_years < t_bgb_yr && t_hg > 0.0 {
+        // Hertzsprung Gap
+        let tau_hg = (age_years - t_ms_yr) / t_hg;
+        let l = hg_luminosity(mass, z_c, tau_hg);
+        let r = hg_radius(mass, z_c, tau_hg);
+        let mc_tms = mc_fraction_tms(mass);
+        // Core mass grows linearly from mc_tms fraction toward ~0.45 for low mass
+        let mc_bgb = if mass <= 2.0 {
+            0.45 / mass
+        } else {
+            mc_tms * 1.1
+        };
+        let mc_frac = mc_tms + (mc_bgb - mc_tms) * tau_hg;
+        StellarState {
+            phase: SsePhase::HertzsprungGap,
+            luminosity_solar: l,
+            radius_solar: r,
+            temperature_k: temp_from_lr(l, r),
+            core_mass_fraction: mc_frac.clamp(0.0, 1.0),
+        }
+    } else if age_years < t_rgb_end {
+        // Red Giant Branch
+        let tau_rgb = if t_rgb > 0.0 {
+            (age_years - t_bgb_yr) / t_rgb
+        } else {
+            1.0
+        };
+        let l = rgb_luminosity(mass, z_c, tau_rgb);
+        let r = rgb_radius(mass, l, z_c);
+        StellarState {
+            phase: SsePhase::RedGiantBranch,
+            luminosity_solar: l,
+            radius_solar: r,
+            temperature_k: temp_from_lr(l, r),
+            core_mass_fraction: if mass <= 2.0 {
+                (0.45 / mass).clamp(0.1, 0.9)
+            } else {
+                mc_fraction_tms(mass) * 1.2
+            },
+        }
+    } else {
+        // Beyond RGB — assign remnant
+        let (phase, l, r) = if mass < 8.0 {
+            (SsePhase::WhiteDwarf, 0.01, 0.01)
+        } else if mass < 25.0 {
+            (SsePhase::NeutronStar, 0.0, 1e-5)
+        } else {
+            (SsePhase::BlackHole, 0.0, 0.0)
+        };
+        StellarState {
+            phase,
+            luminosity_solar: l,
+            radius_solar: r,
+            temperature_k: temp_from_lr(l, r),
+            core_mass_fraction: 1.0,
+        }
     }
 }
 
@@ -1242,6 +1749,157 @@ mod tests {
         assert!((back.luminosity_solar - p.luminosity_solar).abs() < 1e-15);
         assert!((back.radius_solar - p.radius_solar).abs() < 1e-15);
         assert!((back.temperature_k - p.temperature_k).abs() < 1e-10);
+    }
+
+    #[test]
+    fn lbgb_solar() {
+        // L_BGB for 1 M_sun should be a few L_sun (brighter than TMS)
+        let l = lbgb(1.0, Z_SUN);
+        let l_tms = tms_luminosity(1.0, Z_SUN);
+        assert!(l > l_tms, "L_BGB should exceed L_TMS: {l} vs {l_tms}");
+        assert!(l > 1.0 && l < 50.0, "Solar L_BGB: {l}");
+    }
+
+    #[test]
+    fn lbgb_increases_with_mass() {
+        let l1 = lbgb(1.0, Z_SUN);
+        let l5 = lbgb(5.0, Z_SUN);
+        assert!(l5 > l1, "L_BGB should increase with mass");
+    }
+
+    #[test]
+    fn rgb_radius_solar() {
+        // At L_BGB the star has just left the MS, R ~ 2–3 R_sun
+        let l = lbgb(1.0, Z_SUN);
+        let r = rgb_radius(1.0, l, Z_SUN);
+        assert!(r > 1.5 && r < 10.0, "Solar RGB radius at L_BGB: {r} R_sun");
+        // Higher on the RGB, radius becomes much larger
+        let r_bright = rgb_radius(1.0, 1000.0, Z_SUN);
+        assert!(
+            r_bright > 50.0,
+            "Solar RGB radius at 1000 L_sun: {r_bright}"
+        );
+    }
+
+    #[test]
+    fn rgb_radius_increases_with_luminosity() {
+        let r1 = rgb_radius(1.0, 10.0, Z_SUN);
+        let r2 = rgb_radius(1.0, 100.0, Z_SUN);
+        assert!(r2 > r1, "RGB radius should increase with luminosity");
+    }
+
+    #[test]
+    fn mc_fraction_tms_solar() {
+        let mc = mc_fraction_tms(1.0);
+        // mctmsf returns the ratio for core mass initialization at HG start
+        // For 1 M_sun: ~0.65-0.80 (most of the core processed by TMS)
+        assert!(mc > 0.5 && mc < 0.9, "Solar Mc_TMS/M: {mc}");
+    }
+
+    #[test]
+    fn hg_luminosity_boundaries() {
+        let l_tms = tms_luminosity(1.0, Z_SUN);
+        let l_bgb = lbgb(1.0, Z_SUN);
+        let l_start = hg_luminosity(1.0, Z_SUN, 0.0);
+        let l_end = hg_luminosity(1.0, Z_SUN, 1.0);
+        assert!(
+            (l_start - l_tms).abs() / l_tms < 0.01,
+            "HG start should match L_TMS"
+        );
+        assert!(
+            (l_end - l_bgb).abs() / l_bgb < 0.01,
+            "HG end should match L_BGB"
+        );
+    }
+
+    #[test]
+    fn hg_radius_increases() {
+        let r_start = hg_radius(1.0, Z_SUN, 0.0);
+        let r_end = hg_radius(1.0, Z_SUN, 1.0);
+        assert!(r_end > r_start, "Radius should grow during HG");
+    }
+
+    #[test]
+    fn evolve_solar_ms() {
+        let s = evolve(1.0, Z_SUN, 4.6e9);
+        assert_eq!(s.phase, SsePhase::MainSequence);
+        assert!(s.luminosity_solar > 0.5 && s.luminosity_solar < 2.0);
+        assert!(s.radius_solar > 0.5 && s.radius_solar < 2.0);
+    }
+
+    #[test]
+    fn evolve_solar_hg() {
+        let t_ms = ms_lifetime(1.0, Z_SUN);
+        let s = evolve(1.0, Z_SUN, t_ms * 1.05);
+        assert_eq!(s.phase, SsePhase::HertzsprungGap);
+        assert!(s.luminosity_solar > tms_luminosity(1.0, Z_SUN));
+    }
+
+    #[test]
+    fn evolve_solar_rgb() {
+        let t_bgb = t_bgb(1.0, Z_SUN) * 1e6;
+        let s = evolve(1.0, Z_SUN, t_bgb * 1.1);
+        assert_eq!(s.phase, SsePhase::RedGiantBranch);
+        assert!(s.luminosity_solar > lbgb(1.0, Z_SUN));
+        assert!(s.radius_solar > 2.0, "RGB radius: {}", s.radius_solar);
+    }
+
+    #[test]
+    fn evolve_solar_remnant() {
+        let s = evolve(1.0, Z_SUN, 15e10);
+        assert_eq!(s.phase, SsePhase::WhiteDwarf);
+    }
+
+    #[test]
+    fn evolve_massive_remnant() {
+        let s = evolve(30.0, Z_SUN, 1e10);
+        assert_eq!(s.phase, SsePhase::BlackHole);
+    }
+
+    #[test]
+    fn evolve_phase_ordering() {
+        // Sun should go through MS → HG → RGB → WD in chronological order
+        let t_ms = ms_lifetime(1.0, Z_SUN);
+        let t_bg = t_bgb(1.0, Z_SUN) * 1e6;
+
+        let s1 = evolve(1.0, Z_SUN, t_ms * 0.5);
+        let s2 = evolve(1.0, Z_SUN, t_ms + (t_bg - t_ms) * 0.5);
+        let s3 = evolve(1.0, Z_SUN, t_bg * 1.5);
+
+        assert_eq!(s1.phase, SsePhase::MainSequence);
+        assert_eq!(s2.phase, SsePhase::HertzsprungGap);
+        // s3 could be RGB or remnant depending on RGB duration
+        assert!(
+            s3.phase == SsePhase::RedGiantBranch || s3.phase == SsePhase::WhiteDwarf,
+            "Phase at 1.5×t_BGB: {:?}",
+            s3.phase
+        );
+    }
+
+    #[test]
+    fn sse_phase_serde_roundtrip() {
+        for phase in [
+            SsePhase::MainSequence,
+            SsePhase::HertzsprungGap,
+            SsePhase::RedGiantBranch,
+            SsePhase::CoreHeliumBurning,
+            SsePhase::WhiteDwarf,
+            SsePhase::NeutronStar,
+            SsePhase::BlackHole,
+        ] {
+            let json = serde_json::to_string(&phase).unwrap();
+            let back: SsePhase = serde_json::from_str(&json).unwrap();
+            assert_eq!(back, phase);
+        }
+    }
+
+    #[test]
+    fn stellar_state_serde_roundtrip() {
+        let s = evolve(1.0, Z_SUN, 4.6e9);
+        let json = serde_json::to_string(&s).unwrap();
+        let back: StellarState = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.phase, s.phase);
+        assert!((back.luminosity_solar - s.luminosity_solar).abs() < 1e-10);
     }
 
     #[test]

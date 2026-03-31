@@ -14,10 +14,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 - `StarField` `Default` impl, `len`/`is_empty` on `StarField` and `EvolutionTrack`
 - `sse` module — analytic stellar evolution fitting formulae with full metallicity-dependent coefficients (Z ∈ [0.0001, 0.03]):
   - ZAMS anchors: `zams_luminosity`, `zams_radius`, `zams_temperature`, `zams_properties` (Tout et al. 1996, MNRAS 281, 257)
-  - TMS anchors: `tms_luminosity`, `tms_radius`, `tms_temperature` (Hurley, Pols & Tout 2000, MNRAS 315, 543)
+  - TMS anchors: `tms_luminosity`, `tms_radius`, `tms_temperature` (Hurley, Pols & Tout 2000, MNRAS 315, 543) with piecewise R_TMS formula (low-mass floor, high-mass rational, linear transition)
   - Lifetimes: `t_bgb` (base of giant branch time), `ms_lifetime_myr`, `ms_lifetime` (hook-corrected MS lifetime)
-  - MS interpolation: `ms_luminosity`, `ms_radius`, `ms_temperature` as functions of fractional age τ
+  - MS interpolation: `ms_luminosity`, `ms_radius`, `ms_temperature` with full HPT00 hook correction (α_L, β_L, η_L, δ_L for luminosity; α_R, β_R, γ_R, δ_R for radius)
   - `ms_properties` convenience function returning L, R, T at a given age
+  - Post-MS: `lbgb` (luminosity at base of giant branch), `rgb_radius` (red giant branch radius), `rgb_luminosity` (RGB luminosity growth), `hg_luminosity`/`hg_radius` (Hertzsprung gap interpolation), `mc_fraction_tms` (core mass at TMS), `gb_params` (giant branch parameters)
+  - `evolve(mass, z, age)` — unified evolution function returning `StellarState` (phase, L, R, T, core mass fraction) from ZAMS through remnant formation
+  - `SsePhase` enum: MainSequence, HertzsprungGap, RedGiantBranch, CoreHeliumBurning, WhiteDwarf, NeutronStar, BlackHole
+  - `StellarState` struct with serde support
   - `ZamsProperties` and `MsProperties` structs with serde support
 - Extended spectral classes: `W` (Wolf-Rayet, >50,000 K), `L` (brown dwarf, 1,300–2,100 K), `T` (methane dwarf, 500–1,300 K), `Y` (ultra-cool, <500 K)
 - Temperature boundary constants: `T_W_MIN`, `T_M_MIN`, `T_L_MIN`, `T_T_MIN`

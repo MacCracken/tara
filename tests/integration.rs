@@ -247,3 +247,51 @@ fn sse_mass_ordering() {
         assert!(sse::ms_lifetime(m_hi, z) < sse::ms_lifetime(m_lo, z));
     }
 }
+
+/// SSE: evolve() lifecycle — phase transitions from MS through remnant.
+#[test]
+fn sse_evolve_lifecycle() {
+    let z = sse::Z_SUN;
+    let t_ms = sse::ms_lifetime(1.0, z);
+    let t_bgb = sse::t_bgb(1.0, z) * 1e6;
+
+    // Early MS
+    let s = sse::evolve(1.0, z, t_ms * 0.1);
+    assert_eq!(s.phase, sse::SsePhase::MainSequence);
+    assert!(s.luminosity_solar > 0.0);
+
+    // Mid MS — luminosity should be between ZAMS and TMS
+    let s = sse::evolve(1.0, z, t_ms * 0.5);
+    assert_eq!(s.phase, sse::SsePhase::MainSequence);
+    assert!(s.luminosity_solar >= sse::zams_luminosity(1.0, z));
+    assert!(s.luminosity_solar <= sse::tms_luminosity(1.0, z));
+
+    // Just past TMS — should be in HG
+    let s = sse::evolve(1.0, z, t_ms + (t_bgb - t_ms) * 0.5);
+    assert_eq!(s.phase, sse::SsePhase::HertzsprungGap);
+    assert!(s.luminosity_solar > sse::tms_luminosity(1.0, z));
+
+    // Past BGB — should be on RGB
+    let s = sse::evolve(1.0, z, t_bgb * 1.01);
+    assert_eq!(s.phase, sse::SsePhase::RedGiantBranch);
+    assert!(s.radius_solar > 1.5, "RGB radius: {}", s.radius_solar);
+
+    // Very old — should be a remnant
+    let s = sse::evolve(1.0, z, 1e11);
+    assert_eq!(s.phase, sse::SsePhase::WhiteDwarf);
+
+    // Massive star remnant
+    let s = sse::evolve(30.0, z, 1e10);
+    assert_eq!(s.phase, sse::SsePhase::BlackHole);
+
+    // Intermediate mass remnant
+    let s = sse::evolve(12.0, z, 1e10);
+    assert_eq!(s.phase, sse::SsePhase::NeutronStar);
+
+    // Luminosity should increase monotonically through MS → HG → RGB
+    let l_ms = sse::evolve(1.0, z, t_ms * 0.99).luminosity_solar;
+    let l_hg = sse::evolve(1.0, z, t_ms + (t_bgb - t_ms) * 0.99).luminosity_solar;
+    let l_rgb = sse::evolve(1.0, z, t_bgb * 1.5).luminosity_solar;
+    assert!(l_hg > l_ms, "L_HG > L_MS: {l_hg} vs {l_ms}");
+    assert!(l_rgb > l_hg, "L_RGB > L_HG: {l_rgb} vs {l_hg}");
+}
