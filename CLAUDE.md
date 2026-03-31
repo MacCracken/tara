@@ -74,6 +74,7 @@ AGNOS science stack, kiran, joshua, simulation apps.
 - Do not add unnecessary dependencies
 - Do not break backward compatibility without a major version bump
 - Do not skip benchmarks before claiming performance improvements
+- **Do not update VERSION, Cargo.toml version, or CLAUDE.md version without explicit user permission**
 
 ## Documentation Structure
 

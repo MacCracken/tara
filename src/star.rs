@@ -30,6 +30,7 @@ impl Star {
     /// # Errors
     ///
     /// Returns [`TaraError::InvalidParameter`] if any value is non-positive.
+    #[must_use = "returns a Result containing the new Star"]
     pub fn new(
         mass_solar: f64,
         radius_solar: f64,
@@ -106,5 +107,47 @@ impl fmt::Display for SpectralClass {
             Self::K => write!(f, "K"),
             Self::M => write!(f, "M"),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn star_serde_roundtrip() {
+        let star = Star::new(1.0, 1.0, 5778.0, 1.0, 4.6e9, SpectralClass::G).unwrap();
+        let json = serde_json::to_string(&star).unwrap();
+        let back: Star = serde_json::from_str(&json).unwrap();
+        assert!((back.mass_solar - 1.0).abs() < f64::EPSILON);
+        assert!((back.temperature_k - 5778.0).abs() < f64::EPSILON);
+        assert_eq!(back.spectral_class, SpectralClass::G);
+    }
+
+    #[test]
+    fn spectral_class_serde_roundtrip() {
+        for class in [
+            SpectralClass::O,
+            SpectralClass::B,
+            SpectralClass::A,
+            SpectralClass::F,
+            SpectralClass::G,
+            SpectralClass::K,
+            SpectralClass::M,
+        ] {
+            let json = serde_json::to_string(&class).unwrap();
+            let back: SpectralClass = serde_json::from_str(&json).unwrap();
+            assert_eq!(back, class);
+        }
+    }
+
+    #[test]
+    fn star_rejects_negative_mass() {
+        assert!(Star::new(-1.0, 1.0, 5778.0, 1.0, 0.0, SpectralClass::G).is_err());
+    }
+
+    #[test]
+    fn star_rejects_negative_age() {
+        assert!(Star::new(1.0, 1.0, 5778.0, 1.0, -1.0, SpectralClass::G).is_err());
     }
 }
