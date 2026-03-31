@@ -8,19 +8,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Added
 
-- Soorat integration helpers: `HrDiagramPoint::from_star`, `EvolutionTrack::new`/`push_snapshot`, `SpectralProfile::from_star_blackbody`, `StarField::new`/`push`, `StarViz::from_star` — populate visualization structs from `Star` instances
+- Soorat integration helpers: `HrDiagramPoint::from_star`, `EvolutionTrack::new`/`push_snapshot`/`from_sse_ms`, `SpectralProfile::from_star_blackbody`, `StarField::new`/`push`, `StarViz::from_star` — populate visualization structs from `Star` instances and SSE models
 - `temperature_to_rgb` — Ballesteros (2012) blackbody color approximation for rendering
 - `temperature_to_bv` — Ballesteros (2012) B-V color index via Newton inversion
 - `StarField` `Default` impl, `len`/`is_empty` on `StarField` and `EvolutionTrack`
-- `sse` module — analytic stellar evolution fitting formulae: `zams_luminosity`, `zams_radius`, `zams_temperature`, `zams_properties` (Tout et al. 1996, MNRAS 281, 257) with full metallicity-dependent coefficients (Z ∈ [0.0001, 0.03])
-- `ZamsProperties` struct with serde support
-- Extended spectral classes: `W` (Wolf-Rayet, >50,000 K), `L` (brown dwarf, 1,300–2,100 K), `T` (methane dwarf, 500–1,300 K), `Y` (ultra-cool, <500 K) — new variants in `SpectralClass` enum with temperature boundaries, classification, and subclass support
+- `sse` module — analytic stellar evolution fitting formulae with full metallicity-dependent coefficients (Z ∈ [0.0001, 0.03]):
+  - ZAMS anchors: `zams_luminosity`, `zams_radius`, `zams_temperature`, `zams_properties` (Tout et al. 1996, MNRAS 281, 257)
+  - TMS anchors: `tms_luminosity`, `tms_radius`, `tms_temperature` (Hurley, Pols & Tout 2000, MNRAS 315, 543)
+  - Lifetimes: `t_bgb` (base of giant branch time), `ms_lifetime_myr`, `ms_lifetime` (hook-corrected MS lifetime)
+  - MS interpolation: `ms_luminosity`, `ms_radius`, `ms_temperature` as functions of fractional age τ
+  - `ms_properties` convenience function returning L, R, T at a given age
+  - `ZamsProperties` and `MsProperties` structs with serde support
+- Extended spectral classes: `W` (Wolf-Rayet, >50,000 K), `L` (brown dwarf, 1,300–2,100 K), `T` (methane dwarf, 500–1,300 K), `Y` (ultra-cool, <500 K)
 - Temperature boundary constants: `T_W_MIN`, `T_M_MIN`, `T_L_MIN`, `T_T_MIN`
 - Three usage examples: `star_basics`, `spectral_analysis`, `nucleosynthesis`
 
 ### Changed
 
-- Bolometric correction now uses Flower (1996) / Torres (2010) piecewise polynomial fit (three regimes: cool/intermediate/hot) replacing the previous rough quadratic approximation
+- Bolometric correction now uses Flower (1996) / Torres (2010) piecewise polynomial fit replacing the previous rough quadratic
+
+### Fixed
+
+- ZAMS radius coefficients A10, A15 corrected to match SSE source (sign errors in original transcription)
 
 ## [1.0.0] — 2026-03-31
 

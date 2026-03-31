@@ -81,6 +81,37 @@ impl EvolutionTrack {
     pub fn is_empty(&self) -> bool {
         self.ages.is_empty()
     }
+
+    /// Generate a main-sequence evolution track using SSE fitting formulae.
+    ///
+    /// Samples `n_points` evenly-spaced steps from ZAMS (τ=0) to TMS (τ=1)
+    /// for a star of given mass and metallicity.
+    #[must_use]
+    pub fn from_sse_ms(mass: f64, z: f64, label: impl Into<String>, n_points: usize) -> Self {
+        use crate::sse;
+
+        let mut track = Self::new(label);
+        if n_points == 0 || mass <= 0.0 {
+            return track;
+        }
+
+        let t_ms = sse::ms_lifetime(mass, z);
+
+        for i in 0..n_points {
+            let tau = if n_points > 1 {
+                i as f64 / (n_points - 1) as f64
+            } else {
+                0.0
+            };
+            let p = sse::ms_properties(mass, z, tau * t_ms);
+            track
+                .points
+                .push([p.temperature_k, p.luminosity_solar, p.radius_solar]);
+            track.ages.push(tau * t_ms);
+        }
+
+        track
+    }
 }
 
 /// Spectral line profile for plot rendering.
@@ -377,6 +408,23 @@ mod tests {
         // At 10 pc, apparent ~= absolute
         assert!(field.stars[0].magnitude.is_finite());
         assert!(field.stars[0].radius > 0.0);
+    }
+
+    #[test]
+    fn evolution_track_from_sse() {
+        let track = EvolutionTrack::from_sse_ms(1.0, 0.02, "Solar", 20);
+        assert_eq!(track.len(), 20);
+        assert_eq!(track.label, "Solar");
+        // First point should be ZAMS, last TMS
+        let t_first = track.points[0][0]; // temperature
+        let t_last = track.points[19][0];
+        let l_first = track.points[0][1]; // luminosity
+        let l_last = track.points[19][1];
+        // Star should brighten over MS
+        assert!(l_last > l_first, "L_TMS > L_ZAMS: {l_last} vs {l_first}");
+        // Temperatures should be reasonable
+        assert!(t_first > 4000.0 && t_first < 8000.0);
+        assert!(t_last > 4000.0 && t_last < 8000.0);
     }
 
     #[test]
