@@ -23,6 +23,12 @@ pub fn planck_radiance(wavelength_m: f64, temperature_k: f64) -> f64 {
 
     // Guard against overflow in exp
     if exponent > 700.0 {
+        tracing::trace!(
+            wavelength_m,
+            temperature_k,
+            exponent,
+            "Planck exponent overflow guard — returning 0"
+        );
         return 0.0;
     }
 
@@ -57,6 +63,11 @@ pub fn doppler_shift(rest_wavelength: f64, radial_velocity_ms: f64) -> f64 {
 pub fn doppler_shift_relativistic(rest_wavelength: f64, radial_velocity_ms: f64) -> f64 {
     let beta = radial_velocity_ms / constants::C;
     if beta.abs() >= 1.0 {
+        tracing::warn!(
+            radial_velocity_ms,
+            beta,
+            "superluminal velocity in relativistic Doppler — returning 0"
+        );
         return 0.0;
     }
     rest_wavelength * ((1.0 + beta) / (1.0 - beta)).sqrt()

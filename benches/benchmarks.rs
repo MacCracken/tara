@@ -56,7 +56,7 @@ fn bench_bridge_conversions(c: &mut Criterion) {
     });
 
     c.bench_function("luminosity_class_to_abs_magnitude", |b| {
-        b.iter(|| bridge::luminosity_class_to_abs_magnitude(black_box(5)))
+        b.iter(|| bridge::luminosity_class_to_abs_magnitude(black_box(LuminosityClass::V)))
     });
 }
 
@@ -92,7 +92,14 @@ fn bench_atmosphere(c: &mut Criterion) {
     });
 
     c.bench_function("kramers_opacity", |b| {
-        b.iter(|| atmosphere::kramers_opacity(black_box(1.0), black_box(1e6), black_box(0.74), black_box(0.02)))
+        b.iter(|| {
+            atmosphere::kramers_opacity(
+                black_box(1.0),
+                black_box(1e6),
+                black_box(0.74),
+                black_box(0.02),
+            )
+        })
     });
 }
 
@@ -137,7 +144,9 @@ fn bench_spectral(c: &mut Criterion) {
 
 fn bench_nucleosynthesis(c: &mut Criterion) {
     c.bench_function("pp_chain_rate", |b| {
-        b.iter(|| nucleosynthesis::pp_chain_rate(black_box(150.0), black_box(0.34), black_box(15.7e6)))
+        b.iter(|| {
+            nucleosynthesis::pp_chain_rate(black_box(150.0), black_box(0.34), black_box(15.7e6))
+        })
     });
 
     c.bench_function("cno_cycle_rate", |b| {
@@ -152,7 +161,9 @@ fn bench_nucleosynthesis(c: &mut Criterion) {
     });
 
     c.bench_function("triple_alpha_rate", |b| {
-        b.iter(|| nucleosynthesis::triple_alpha_rate(black_box(1e4), black_box(0.98), black_box(200e6)))
+        b.iter(|| {
+            nucleosynthesis::triple_alpha_rate(black_box(1e4), black_box(0.98), black_box(200e6))
+        })
     });
 }
 

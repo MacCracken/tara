@@ -17,18 +17,21 @@ pub fn stellar_mass_solar_to_mu(mass_solar: f64) -> f64 {
 
 /// Convert luminosity class to approximate absolute magnitude.
 ///
-/// Rough mapping for main-sequence stars.
+/// Rough mapping for typical stars of each luminosity class.
 #[must_use]
-pub fn luminosity_class_to_abs_magnitude(luminosity_class: u8) -> f64 {
+pub fn luminosity_class_to_abs_magnitude(
+    luminosity_class: crate::classification::LuminosityClass,
+) -> f64 {
+    use crate::classification::LuminosityClass;
     match luminosity_class {
-        1 => -6.0, // Ia supergiant
-        2 => -3.0, // II bright giant
-        3 => 0.0,  // III giant
-        4 => 2.0,  // IV subgiant
-        5 => 5.0,  // V main sequence (solar-like)
-        6 => 10.0, // VI subdwarf
-        7 => 15.0, // VII white dwarf
-        _ => 5.0,  // default solar
+        LuminosityClass::Ia => -7.0,  // luminous supergiant
+        LuminosityClass::Ib => -5.0,  // less luminous supergiant
+        LuminosityClass::II => -3.0,  // bright giant
+        LuminosityClass::III => 0.0,  // normal giant
+        LuminosityClass::IV => 2.0,   // subgiant
+        LuminosityClass::V => 5.0,    // main sequence (solar-like)
+        LuminosityClass::VI => 10.0,  // subdwarf
+        LuminosityClass::VII => 15.0, // white dwarf
     }
 }
 
@@ -102,8 +105,17 @@ mod tests {
 
     #[test]
     fn luminosity_main_sequence() {
-        let m = luminosity_class_to_abs_magnitude(5);
+        use crate::classification::LuminosityClass;
+        let m = luminosity_class_to_abs_magnitude(LuminosityClass::V);
         assert!((m - 5.0).abs() < 0.1);
+    }
+
+    #[test]
+    fn luminosity_supergiant_ia_brighter_than_ib() {
+        use crate::classification::LuminosityClass;
+        let ia = luminosity_class_to_abs_magnitude(LuminosityClass::Ia);
+        let ib = luminosity_class_to_abs_magnitude(LuminosityClass::Ib);
+        assert!(ia < ib, "Ia should be brighter (lower mag) than Ib");
     }
 
     #[test]

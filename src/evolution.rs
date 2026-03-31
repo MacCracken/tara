@@ -6,8 +6,6 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::constants;
-
 /// Stellar evolutionary phase.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[non_exhaustive]
@@ -60,6 +58,10 @@ pub enum RemnantType {
 #[must_use]
 pub fn mass_luminosity(mass_solar: f64) -> f64 {
     if mass_solar <= 0.0 {
+        tracing::warn!(
+            mass_solar,
+            "non-positive mass in mass_luminosity — returning 0"
+        );
         return 0.0;
     }
     if mass_solar < 0.43 {
@@ -108,16 +110,20 @@ pub fn remnant_type(initial_mass_solar: f64) -> RemnantType {
     }
 }
 
+/// Chandrasekhar mass limit for white dwarfs (solar masses).
+pub const CHANDRASEKHAR_LIMIT: f64 = 1.44;
+
 /// White dwarf final mass from initial mass (solar masses).
 ///
 /// Initial-final mass relation from Kalirai et al. (2008):
 /// M_final = 0.109 M_initial + 0.394 M_sun.
 ///
-/// Valid for initial mass ~1–8 M_sun. Returns final mass in solar masses.
+/// Valid for initial mass ~1–8 M_sun. Returns final mass in solar masses,
+/// clamped to the Chandrasekhar limit (~1.44 M_sun).
 #[must_use]
 #[inline]
 pub fn white_dwarf_mass(initial_mass_solar: f64) -> f64 {
-    (0.109 * initial_mass_solar + 0.394).clamp(0.0, constants::M_SUN)
+    (0.109 * initial_mass_solar + 0.394).clamp(0.0, CHANDRASEKHAR_LIMIT)
 }
 
 /// Determine approximate evolutionary phase from mass (solar masses) and age (years).
@@ -127,6 +133,11 @@ pub fn white_dwarf_mass(initial_mass_solar: f64) -> f64 {
 #[must_use]
 pub fn evolutionary_phase(mass_solar: f64, age_years: f64) -> EvolutionaryPhase {
     if mass_solar <= 0.0 || age_years < 0.0 {
+        tracing::warn!(
+            mass_solar,
+            age_years,
+            "non-physical input to evolutionary_phase — defaulting to PreMainSequence"
+        );
         return EvolutionaryPhase::PreMainSequence;
     }
 
@@ -147,6 +158,8 @@ pub fn evolutionary_phase(mass_solar: f64, age_years: f64) -> EvolutionaryPhase 
         EvolutionaryPhase::HorizontalBranch
     } else if age_years < t_ms * 1.5 {
         EvolutionaryPhase::AsymptoticGiantBranch
+    } else if age_years < t_ms * 1.6 && mass_solar < 8.0 {
+        EvolutionaryPhase::PostAgb
     } else if mass_solar < 8.0 {
         EvolutionaryPhase::WhiteDwarf
     } else if mass_solar < 25.0 {
@@ -214,7 +227,8 @@ mod tests {
 
     #[test]
     fn old_solar_mass_becomes_wd() {
-        let phase = evolutionary_phase(1.0, 15e9);
+        // Well past PostAgb (> 1.6× t_ms ≈ 16 Gyr)
+        let phase = evolutionary_phase(1.0, 20e9);
         assert_eq!(phase, EvolutionaryPhase::WhiteDwarf);
     }
 
@@ -256,5 +270,23 @@ mod tests {
             (m - 0.503).abs() < 0.01,
             "Solar WD mass: {m}, expected ~0.503"
         );
+    }
+
+    #[test]
+    fn white_dwarf_mass_clamped_to_chandrasekhar() {
+        // Very massive progenitor should clamp to Chandrasekhar limit
+        let m = white_dwarf_mass(100.0);
+        assert!(
+            (m - CHANDRASEKHAR_LIMIT).abs() < f64::EPSILON,
+            "WD mass should clamp to Chandrasekhar limit: {m}, expected {CHANDRASEKHAR_LIMIT}"
+        );
+    }
+
+    #[test]
+    fn post_agb_phase() {
+        // A solar-mass star just past AGB should be PostAgb before WD
+        let t_ms = main_sequence_lifetime(1.0);
+        let phase = evolutionary_phase(1.0, t_ms * 1.55);
+        assert_eq!(phase, EvolutionaryPhase::PostAgb);
     }
 }

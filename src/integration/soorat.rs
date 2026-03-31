@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 
 /// HR diagram data point for scatter plot rendering.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct HrDiagramPoint {
     /// Effective temperature (K).
     pub temperature: f64,
@@ -17,6 +18,7 @@ pub struct HrDiagramPoint {
 
 /// Stellar evolution track for animated line rendering.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct EvolutionTrack {
     /// Time-series of (temperature_K, luminosity_solar, radius_solar).
     pub points: Vec<[f64; 3]>,
@@ -28,6 +30,7 @@ pub struct EvolutionTrack {
 
 /// Spectral line profile for plot rendering.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct SpectralProfile {
     /// Wavelength samples (nm).
     pub wavelengths: Vec<f64>,
@@ -39,6 +42,7 @@ pub struct SpectralProfile {
 
 /// Star field for instanced point/billboard rendering.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct StarField {
     /// Stars with position and properties.
     pub stars: Vec<StarViz>,
@@ -46,6 +50,7 @@ pub struct StarField {
 
 /// A single star for rendering.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct StarViz {
     /// Position `[x, y, z]` (arbitrary units).
     pub position: [f32; 3],

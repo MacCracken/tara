@@ -11,6 +11,11 @@ use crate::constants;
 #[inline]
 pub fn effective_temperature(luminosity_w: f64, radius_m: f64) -> f64 {
     if luminosity_w <= 0.0 || radius_m <= 0.0 {
+        tracing::warn!(
+            luminosity_w,
+            radius_m,
+            "non-positive input to effective_temperature — returning 0"
+        );
         return 0.0;
     }
     let flux = luminosity_w / (4.0 * std::f64::consts::PI * radius_m * radius_m);
@@ -25,6 +30,11 @@ pub fn effective_temperature(luminosity_w: f64, radius_m: f64) -> f64 {
 #[inline]
 pub fn log_surface_gravity(mass_solar: f64, radius_solar: f64) -> f64 {
     if mass_solar <= 0.0 || radius_solar <= 0.0 {
+        tracing::warn!(
+            mass_solar,
+            radius_solar,
+            "non-positive input to log_surface_gravity — returning 0"
+        );
         return 0.0;
     }
     let m_kg = mass_solar * constants::M_SUN;

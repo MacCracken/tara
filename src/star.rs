@@ -143,29 +143,44 @@ impl StarBuilder {
     /// Returns [`TaraError::InvalidParameter`] if any physical value is non-positive.
     pub fn build(self) -> Result<Star> {
         if self.mass_solar <= 0.0 {
-            return Err(TaraError::InvalidParameter(
-                "mass_solar must be positive".into(),
+            let err = TaraError::InvalidParameter(format!(
+                "mass_solar must be positive, got {}",
+                self.mass_solar
             ));
+            tracing::warn!(mass_solar = self.mass_solar, "{err}");
+            return Err(err);
         }
         if self.radius_solar <= 0.0 {
-            return Err(TaraError::InvalidParameter(
-                "radius_solar must be positive".into(),
+            let err = TaraError::InvalidParameter(format!(
+                "radius_solar must be positive, got {}",
+                self.radius_solar
             ));
+            tracing::warn!(radius_solar = self.radius_solar, "{err}");
+            return Err(err);
         }
         if self.temperature_k <= 0.0 {
-            return Err(TaraError::InvalidParameter(
-                "temperature_k must be positive".into(),
+            let err = TaraError::InvalidParameter(format!(
+                "temperature_k must be positive, got {}",
+                self.temperature_k
             ));
+            tracing::warn!(temperature_k = self.temperature_k, "{err}");
+            return Err(err);
         }
         if self.luminosity_solar <= 0.0 {
-            return Err(TaraError::InvalidParameter(
-                "luminosity_solar must be positive".into(),
+            let err = TaraError::InvalidParameter(format!(
+                "luminosity_solar must be positive, got {}",
+                self.luminosity_solar
             ));
+            tracing::warn!(luminosity_solar = self.luminosity_solar, "{err}");
+            return Err(err);
         }
         if self.age_years < 0.0 {
-            return Err(TaraError::InvalidParameter(
-                "age_years must be non-negative".into(),
+            let err = TaraError::InvalidParameter(format!(
+                "age_years must be non-negative, got {}",
+                self.age_years
             ));
+            tracing::warn!(age_years = self.age_years, "{err}");
+            return Err(err);
         }
 
         let spectral_class = self.spectral_class.unwrap_or_else(|| {
@@ -174,6 +189,15 @@ impl StarBuilder {
         let spectral_subclass = self
             .spectral_subclass
             .unwrap_or_else(|| crate::classification::spectral_subclass(self.temperature_k));
+
+        tracing::debug!(
+            mass = self.mass_solar,
+            radius = self.radius_solar,
+            temp = self.temperature_k,
+            class = %spectral_class,
+            sub = spectral_subclass,
+            "star constructed"
+        );
 
         Ok(Star {
             mass_solar: self.mass_solar,
