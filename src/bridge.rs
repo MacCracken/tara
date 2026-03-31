@@ -1,17 +1,18 @@
 //! Cross-crate bridges — convert primitive values from other AGNOS science crates
 //! into tara stellar astrophysics parameters and vice versa.
 
+use crate::constants;
+
 // ── Falak bridges (orbital mechanics) ──────────────────────────────────────
 
 /// Convert stellar mass (solar masses) to gravitational parameter μ (m³/s²).
 ///
-/// μ = G × M, M_sun = 1.989e30 kg.
+/// Uses the heliocentric gravitational constant GM_sun directly
+/// (IAU 2015), which is known to higher precision than G × M_sun.
 #[must_use]
 #[inline]
 pub fn stellar_mass_solar_to_mu(mass_solar: f64) -> f64 {
-    const G: f64 = 6.674_30e-11;
-    const M_SUN: f64 = 1.989e30;
-    G * mass_solar * M_SUN
+    mass_solar * constants::GM_SUN
 }
 
 /// Convert luminosity class to approximate absolute magnitude.
@@ -35,19 +36,21 @@ pub fn luminosity_class_to_abs_magnitude(luminosity_class: u8) -> f64 {
 
 /// Convert effective temperature (K) to peak blackbody wavelength (nm).
 ///
-/// Wien's displacement law: λ_max = 2.898e6 / T (nm).
+/// Wien's displacement law: λ_max = b / T, using CODATA 2018 Wien constant.
 #[must_use]
 #[inline]
 pub fn temperature_to_peak_wavelength_nm(temperature_k: f64) -> f64 {
     if temperature_k <= 0.0 {
         return 0.0;
     }
-    2_898_000.0 / temperature_k
+    constants::WIEN_B_NM / temperature_k
 }
 
 /// Convert surface gravity log(g) to limb darkening coefficient (linear).
 ///
-/// Simplified: u ≈ 0.6 - 0.1 × (log_g - 4.0). Solar log_g ≈ 4.44.
+/// Simplified approximation: u ≈ 0.6 - 0.1 × (log_g - 4.0).
+/// Solar log_g ≈ 4.44. This is a rough bridge value; real limb darkening
+/// depends on wavelength, temperature, and metallicity (see Claret 2000).
 #[must_use]
 #[inline]
 pub fn surface_gravity_to_limb_darkening(log_g: f64) -> f64 {
@@ -89,7 +92,12 @@ mod tests {
     #[test]
     fn sun_mu() {
         let mu = stellar_mass_solar_to_mu(1.0);
-        assert!((mu - 1.327e20).abs() < 1e18);
+        // Should be exactly GM_SUN for 1 solar mass
+        assert!(
+            (mu - constants::GM_SUN).abs() < f64::EPSILON,
+            "1 M_sun → μ = {mu}, expected {}",
+            constants::GM_SUN
+        );
     }
 
     #[test]
@@ -100,9 +108,12 @@ mod tests {
 
     #[test]
     fn wien_sun() {
-        // Sun: T ≈ 5778K → λ_max ≈ 501 nm
-        let nm = temperature_to_peak_wavelength_nm(5778.0);
-        assert!((nm - 501.0).abs() < 5.0);
+        // Sun (IAU 2015): T = 5772 K → λ_max ≈ 502 nm
+        let nm = temperature_to_peak_wavelength_nm(constants::T_SUN);
+        assert!(
+            (nm - 502.0).abs() < 5.0,
+            "Solar peak: {nm} nm, expected ~502"
+        );
     }
 
     #[test]

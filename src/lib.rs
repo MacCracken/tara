@@ -6,6 +6,9 @@
 #![warn(missing_docs)]
 #![forbid(unsafe_code)]
 
+/// Physical and astronomical constants (IAU 2015, CODATA 2018).
+pub mod constants;
+
 /// Cross-crate bridges — primitive-value conversions from other AGNOS science crates.
 pub mod bridge;
 /// Error types for the Tara engine.
