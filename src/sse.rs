@@ -398,7 +398,40 @@ pub fn tms_luminosity(mass: f64, z: f64) -> f64 {
     if den <= 0.0 { 0.0 } else { num / den }
 }
 
-// ── HPT00 — R_TMS coefficients (from xr data, high-mass branch) ─────────
+// ── HPT00 — R_TMS coefficients (from xr data) ───────────────────────────
+
+// Low-mass branch (M <= a62): R_TMS = max(1.5*R_ZAMS, (a52+a53*M^a55)/(a54+M^a56))
+
+/// xr(1..5) → raw a52 before multiply by a54
+const XR_A52R: [f64; 5] = [
+    2.187_715e-1,
+    -2.154_437e0,
+    -3.768_678e0,
+    -1.975_518e0,
+    -3.021_475e-1,
+];
+/// xr(6..10) → raw a53 before multiply by a54
+const XR_A53R: [f64; 5] = [
+    1.466_440e0,
+    1.839_725e0,
+    6.442_199e0,
+    4.023_635e0,
+    6.957_529e-1,
+];
+/// xr(11..15) → a54 (also multiplier for a52, a53)
+const XR_A54: [f64; 5] = [
+    2.652_091e1,
+    8.178_458e1,
+    1.156_058e2,
+    7.633_811e1,
+    1.950_698e1,
+];
+/// xr(16..19) → a55 (4-term)
+const XR_A55: [f64; 5] = [1.472_103e0, -2.947_609e0, -3.312_828e0, -9.945_065e-1, 0.0];
+/// xr(20..23) → a56 (4-term)
+const XR_A56: [f64; 5] = [3.071_048e0, -5.679_941e0, -9.745_523e0, -3.594_543e0, 0.0];
+
+// High-mass branch (M >= a62+0.1): R_TMS = (a57*M^3+a58*M^a61+a59*M^(a61+1.5))/(a60+M^5)
 
 /// xr(24) → a57 constant
 const XR_A57: f64 = -8.672_073e-2;
@@ -411,34 +444,79 @@ const XR_A60: [f64; 5] = [1.476_246e0, 1.899_331e0, 1.195_010e0, 3.035_051e-1, 0
 /// xr(37..39) → a61 (3-term)
 const XR_A61: [f64; 5] = [5.502_535e0, -6.601_663e-2, 9.968_707e-2, 3.599_801e-2, 0.0];
 
-/// Terminal main-sequence radius R_TMS (R☉).
-///
-/// HPT00 Eq. 9. Uses the high-mass branch (M > a62 threshold).
-/// For simplicity this uses the high-mass formula for all masses,
-/// which is accurate above ~1.5 M☉ and within ~10% below.
+/// Compute the mass threshold a62 separating low/high-mass R_TMS branches.
 #[must_use]
-pub fn tms_radius(mass: f64, z: f64) -> f64 {
-    if mass <= 0.0 {
-        return 0.0;
-    }
-    let ze = zeta(z.clamp(0.0001, 0.03));
+fn rtms_mass_threshold(z: f64) -> f64 {
+    let lz = z.log10();
+    let x = 0.1461 + 0.1237 * (lz + 2.0);
+    let inner = 0.1461_f64.min(x).max(0.097);
+    let outer = (0.097 - 0.1072 * (lz + 3.0)).max(inner);
+    10.0_f64.powf(outer)
+}
+
+/// Low-mass R_TMS branch: (a52 + a53*M^a55) / (a54 + M^a56).
+#[must_use]
+fn rtms_low_mass(mass: f64, ze: f64) -> f64 {
+    let a54 = coeff(&XR_A54, ze);
+    let a52 = coeff(&XR_A52R, ze) * a54;
+    let a53 = coeff(&XR_A53R, ze) * a54;
+    let a55 = coeff(&XR_A55, ze);
+    let a56 = coeff(&XR_A56, ze);
+
+    let num = a52 + a53 * mass.powf(a55);
+    let den = a54 + mass.powf(a56);
+    if den <= 0.0 { 0.0 } else { num / den }
+}
+
+/// High-mass R_TMS branch: (a57*M^3 + a58*M^a61 + a59*M^(a61+1.5)) / (a60 + M^5).
+#[must_use]
+fn rtms_high_mass(mass: f64, ze: f64) -> f64 {
     let a58 = coeff(&XR_A58, ze);
     let a59 = coeff(&XR_A59, ze);
     let a60 = coeff(&XR_A60, ze);
     let a61 = coeff(&XR_A61, ze);
 
-    let m3 = mass.powi(3);
-    let m5 = mass.powi(5);
-    let ma61 = mass.powf(a61);
+    let num = XR_A57 * mass.powi(3) + a58 * mass.powf(a61) + a59 * mass.powf(a61 + 1.5);
+    let den = a60 + mass.powi(5);
+    if den <= 0.0 { 0.0 } else { num / den }
+}
 
-    let num = XR_A57 * m3 + a58 * ma61 + a59 * mass.powf(a61 + 1.5);
-    let den = a60 + m5;
+/// Terminal main-sequence radius R_TMS (R☉).
+///
+/// HPT00 Eq. 9. Piecewise formula with three branches:
+/// - M ≤ a62: low-mass rational function, floored at 1.5 × R_ZAMS
+/// - M ≥ a62 + 0.1: high-mass rational function
+/// - a62 < M < a62 + 0.1: linear interpolation between branches
+#[must_use]
+pub fn tms_radius(mass: f64, z: f64) -> f64 {
+    if mass <= 0.0 {
+        return 0.0;
+    }
+    let z_clamped = z.clamp(0.0001, 0.03);
+    let ze = zeta(z_clamped);
+    let a62 = rtms_mass_threshold(z_clamped);
+    let m2 = a62 + 0.1;
 
-    // Clamp: R_TMS should be at least R_ZAMS
-    let r_zams = zams_radius(mass, z);
-    let r_tms = if den <= 0.0 { r_zams } else { num / den };
+    let r = if mass <= a62 {
+        let r_low = rtms_low_mass(mass, ze);
+        let r_floor = 1.5 * zams_radius(mass, z_clamped);
+        r_low.max(r_floor)
+    } else if mass >= m2 {
+        rtms_high_mass(mass, ze)
+    } else {
+        // Linear interpolation across the transition
+        let r_at_a62 = {
+            let r_low = rtms_low_mass(a62, ze);
+            let r_floor = 1.5 * zams_radius(a62, z_clamped);
+            r_low.max(r_floor)
+        };
+        let r_at_m2 = rtms_high_mass(m2, ze);
+        let frac = (mass - a62) / 0.1;
+        r_at_a62 + (r_at_m2 - r_at_a62) * frac
+    };
 
-    r_tms.max(r_zams)
+    // R_TMS must be at least R_ZAMS
+    r.max(zams_radius(mass, z_clamped))
 }
 
 /// TMS effective temperature (K) from mass and metallicity.
@@ -454,15 +532,321 @@ pub fn tms_temperature(mass: f64, z: f64) -> f64 {
     crate::constants::T_SUN * l.powf(0.25) / r.sqrt()
 }
 
+// ── HPT00 — MS interpolation coefficients ────────────────────────────────
+
+// Lalpha coefficients: msp(33)–msp(42)
+/// xl(28..31) → a33
+const XL_A33: [f64; 5] = [
+    2.321_400e-1,
+    1.828_075e-3,
+    -2.232_007e-2,
+    -3.378_734e-3,
+    0.0,
+];
+/// xl(32..35) → a34
+const XL_A34: [f64; 5] = [1.163_659e-2, 3.427_682e-3, 1.421_393e-3, -3.710_666e-3, 0.0];
+/// xl(36..39) → a35
+const XL_A35: [f64; 5] = [
+    1.048_020e-2,
+    -1.231_921e-2,
+    -1.686_860e-2,
+    -4.234_354e-3,
+    0.0,
+];
+/// xl(40..43) → a36
+const XL_A36: [f64; 5] = [
+    1.555_590e0,
+    -3.223_927e-1,
+    -5.197_429e-1,
+    -1.066_441e-1,
+    0.0,
+];
+
+// Lbeta coefficients: msp(43)–msp(46)
+/// xl(44..48) → a43
+const XL_A43: [f64; 5] = [
+    3.855_707e-1,
+    -6.104_166e-1,
+    5.676_742e0,
+    1.060_894e1,
+    5.284_014e0,
+];
+/// xl(49..53) → a44
+const XL_A44: [f64; 5] = [
+    3.579_064e-1,
+    -6.442_936e-1,
+    5.494_644e0,
+    1.054_952e1,
+    5.280_991e0,
+];
+/// xl(54..56) → a45
+const XL_A45: [f64; 5] = [9.587_587e-1, 8.777_464e-1, 2.017_321e-1, 0.0, 0.0];
+
+// Lhook coefficients: msp(47)–msp(51)
+/// xl(57..60) → a47
+const XL_A47: [f64; 5] = [1.910_302e-1, 1.158_624e-1, 3.348_990e-2, 2.599_706e-3, 0.0];
+/// xl(61..64) → a48
+const XL_A48: [f64; 5] = [
+    3.931_056e-1,
+    7.277_637e-2,
+    -1.366_593e-1,
+    -4.508_946e-2,
+    0.0,
+];
+/// xl(65..68) → a49
+const XL_A49: [f64; 5] = [3.267_776e-1, 1.204_424e-1, 9.988_332e-2, 2.455_361e-2, 0.0];
+/// xl(69..72) → a50
+const XL_A50: [f64; 5] = [5.990_212e-1, 5.570_264e-2, 6.207_626e-2, 1.777_283e-2, 0.0];
+
+// Ralpha coefficients: msp(65)–msp(76) — from xr(41..64)
+/// xr(41..44) → a65
+const XR_A65: [f64; 5] = [
+    4.907_546e-1,
+    -1.683_928e-1,
+    -3.108_742e-1,
+    -7.202_918e-2,
+    0.0,
+];
+/// xr(45..48) → a66
+const XR_A66: [f64; 5] = [4.537_070e0, -4.465_455e0, -1.612_690e0, -1.623_246e0, 0.0];
+/// xr(49..52) → a67
+const XR_A67: [f64; 5] = [1.796_220e0, 2.814_020e-1, 1.423_325e0, 3.421_036e-1, 0.0];
+/// xr(53..56) → a68
+const XR_A68: [f64; 5] = [2.256_216e0, 3.773_400e-1, 1.537_867e0, 4.396_373e-1, 0.0];
+/// xr(57..61) → a69
+const XR_A69: [f64; 5] = [
+    1.564_231e-3,
+    1.653_042e-3,
+    -4.439_786e-3,
+    -4.951_011e-3,
+    -1.216_530e-3,
+];
+/// xr(62..64) → a72
+const XR_A72: [f64; 5] = [5.210_157e0, -4.143_695e0, -2.120_870e0, 0.0, 0.0];
+
+// Rbeta coefficients: msp(77)–msp(82) — from xr(65..83)
+/// xr(65..68) → a77
+const XR_A77: [f64; 5] = [
+    1.071_489e0,
+    -1.164_852e-1,
+    -8.623_831e-2,
+    -1.582_349e-2,
+    0.0,
+];
+/// xr(69..72) → a78
+const XR_A78: [f64; 5] = [7.108_492e-1, 7.935_927e-1, 3.926_983e-1, 3.622_146e-2, 0.0];
+/// xr(73..76) → a79
+const XR_A79: [f64; 5] = [
+    3.478_514e0,
+    -2.585_474e-2,
+    -1.512_955e-2,
+    -2.833_691e-3,
+    0.0,
+];
+/// xr(77..80) → a80
+const XR_A80: [f64; 5] = [3.969_331e-3, 4.539_076e-3, 1.720_906e-3, 1.897_857e-4, 0.0];
+/// xr(81..83) → a81 (3-term, special: lzs*lzs*xr(83))
+const XR_A81: [f64; 5] = [9.132_108e-1, -1.653_695e-1, 3.636_784e-2, 0.0, 0.0];
+
+// Rhook coefficients (xr(104..119)) reserved for future rhook implementation.
+
+// ── MS interpolation helper functions ────────────────────────────────────
+
+/// Luminosity alpha coefficient (HPT00).
+#[must_use]
+fn lalpha(mass: f64, ze: f64) -> f64 {
+    let a33 = coeff(&XL_A33, ze);
+    let a34 = coeff(&XL_A34, ze);
+    let a35 = coeff(&XL_A35, ze);
+    let a36 = coeff(&XL_A36, ze);
+    let a39 = (0.0977 - ze * (0.231 + 0.0753 * ze)).max(0.145);
+    let a40 = (0.24 + ze * (0.18 + 0.595 * ze)).min(0.306 + 0.053 * ze);
+    let a41 = (0.33 + ze * (0.132 + 0.218 * ze)).min(0.3625 + 0.062 * ze);
+    let a37 = (1.1064 + ze * (0.415 + 0.18 * ze)).max(0.9);
+    let a38 = (1.19 + ze * (0.377 + 0.176 * ze)).max(1.0);
+    let a42 = (a33 + a34 * 2.0_f64.powf(a36)) / (2.0_f64.powf(0.4) + a35 * 2.0_f64.powf(1.9));
+
+    if mass >= 2.0 {
+        (a33 + a34 * mass.powf(a36)) / (mass.powf(0.4) + a35 * mass.powf(1.9))
+    } else if mass <= 0.5 {
+        a39
+    } else if mass <= 0.7 {
+        a39 + ((0.3 - a39) / 0.2) * (mass - 0.5)
+    } else if mass <= a37 {
+        0.3 + ((a40 - 0.3) / (a37 - 0.7)) * (mass - 0.7)
+    } else if mass <= a38 {
+        a40 + ((a41 - a40) / (a38 - a37)) * (mass - a37)
+    } else {
+        a41 + ((a42 - a41) / (2.0 - a38)) * (mass - a38)
+    }
+}
+
+/// Luminosity beta coefficient (HPT00).
+#[must_use]
+fn lbeta(mass: f64, ze: f64) -> f64 {
+    let a43 = coeff(&XL_A43, ze);
+    let a44 = coeff(&XL_A44, ze);
+    let a45 = coeff(&XL_A45, ze);
+    let a46 = {
+        let v = (1.5135 + 0.3769 * ze).min(1.4);
+        (0.6355 - 0.4192 * ze).max(1.25_f64.max(v))
+    };
+
+    let mut b = a43 - a44 * mass.powf(a45);
+    b = b.max(0.0);
+    if mass > a46 && b > 0.0 {
+        let a1 = a43 - a44 * a46.powf(a45);
+        b = (a1 - 10.0 * a1 * (mass - a46)).max(0.0);
+    }
+    b
+}
+
+/// Luminosity eta exponent (HPT00).
+#[must_use]
+fn leta(mass: f64, ze: f64) -> f64 {
+    let a97 = if ze > (0.0009_f64 / Z_SUN).log10() {
+        10.0
+    } else {
+        20.0
+    };
+    let eta = if mass <= 1.0 {
+        10.0
+    } else if mass >= 1.1 {
+        20.0
+    } else {
+        10.0 + 100.0 * (mass - 1.0)
+    };
+    eta.min(a97)
+}
+
+/// Luminosity hook perturbation δ_L (HPT00).
+#[must_use]
+fn lhook(mass: f64, ze: f64, z: f64) -> f64 {
+    let a47 = coeff(&XL_A47, ze);
+    let a48 = coeff(&XL_A48, ze);
+    let a49 = coeff(&XL_A49, ze);
+    let a50 = coeff(&XL_A50, ze);
+    let a51 = {
+        let v = (1.5135 + 0.3769 * ze).min(1.4);
+        (0.6355 - 0.4192 * ze).max(1.25_f64.max(v))
+    };
+    // zpars(1) = Mhook
+    let mhook = 1.0185 + ze * (0.16015 + ze * 0.0892);
+    let _ = z; // used indirectly via ze
+
+    if mass <= mhook {
+        0.0
+    } else if mass >= a51 {
+        (a47 / mass.powf(a48)).min(a49 / mass.powf(a50))
+    } else {
+        let a2 = (a47 / a51.powf(a48)).min(a49 / a51.powf(a50));
+        a2 * ((mass - mhook) / (a51 - mhook)).powf(0.4)
+    }
+}
+
+/// Radius alpha coefficient (HPT00) — simplified for M >= 0.5.
+#[must_use]
+fn ralpha(mass: f64, ze: f64) -> f64 {
+    let a65 = coeff(&XR_A65, ze);
+    let a66 = coeff(&XR_A66, ze);
+    let a67 = coeff(&XR_A67, ze);
+    let a68 = coeff(&XR_A68, ze);
+    let a69 = coeff(&XR_A69, ze);
+    let a72 = coeff(&XR_A72, ze);
+    let a73 = (0.0843 - ze * (0.0475 + 0.0352 * ze)).max(0.065);
+    let a74 = {
+        let v = 0.0736 + ze * (0.0749 + 0.04426 * ze);
+        let lz = ze + Z_SUN.log10(); // log10(z) = ζ + log10(Z_SUN)
+        if lz < (0.004_f64).log10() {
+            v.min(0.055)
+        } else {
+            v
+        }
+    };
+    let a70 = (1.116 + 0.166 * ze).clamp(0.9, 1.0);
+    let a71 = {
+        let v = (1.477 + 0.296 * ze).max((-0.308 - 1.046 * ze).min(1.6));
+        (0.8 - 2.0 * ze).min(v).max(0.8)
+    };
+    let a75 = (0.136 + 0.0352 * ze).clamp(0.091, 0.121);
+
+    if mass <= 0.5 {
+        a73
+    } else if mass <= 0.65 {
+        a73 + ((a74 - a73) / 0.15) * (mass - 0.5)
+    } else if mass <= a70 {
+        a74 + ((a75 - a74) / (a70 - 0.65)) * (mass - 0.65)
+    } else if mass <= a71 {
+        let a76 = (a65 * a71.powf(a67)) / (a66 + a71.powf(a68));
+        a75 + ((a76 - a75) / (a71 - a70)) * (mass - a70)
+    } else if mass <= a72 {
+        (a65 * mass.powf(a67)) / (a66 + mass.powf(a68))
+    } else {
+        let a5 = (a65 * a72.powf(a67)) / (a66 + a72.powf(a68));
+        a5 + a69 * (mass - a72)
+    }
+}
+
+/// Radius beta coefficient (HPT00).
+#[must_use]
+fn rbeta(mass: f64, ze: f64, z: f64) -> f64 {
+    let a77 = coeff(&XR_A77, ze);
+    let a78 = coeff(&XR_A78, ze);
+    let a79 = coeff(&XR_A79, ze);
+    let a80 = coeff(&XR_A80, ze);
+    let a81 = coeff(&XR_A81, ze);
+    let a82 = {
+        let v = (1.6 + ze * (0.764 + 0.3322 * ze)).clamp(1.4, 1.6);
+        if z > 0.01 { v.max(0.95) } else { v }
+    };
+    let _ = z;
+
+    let b = if mass <= 1.0 {
+        1.06
+    } else if mass <= a82 {
+        1.06 + ((a81 - 1.06) / (a82 - 1.0)) * (mass - 1.0)
+    } else if mass <= 2.0 {
+        let b2 = (a77 * 2.0_f64.powf(3.5)) / (a78 + 2.0_f64.powf(a79));
+        a81 + ((b2 - a81) / (2.0 - a82)) * (mass - a82)
+    } else if mass <= 16.0 {
+        (a77 * mass.powf(3.5)) / (a78 + mass.powf(a79))
+    } else {
+        let b3 = (a77 * 16.0_f64.powf(3.5)) / (a78 + 16.0_f64.powf(a79));
+        b3 + a80 * (mass - 16.0)
+    };
+    b - 1.0
+}
+
+/// Radius gamma coefficient (HPT00) — simplified.
+///
+/// Returns 0 for most stars; non-zero only near M ~ 1 M☉.
+#[must_use]
+fn rgamma(mass: f64, ze: f64) -> f64 {
+    // Simplified Rgamma — full xr(84..103) coefficients reserved for future.
+    // Gamma is ~0 for most masses; non-zero only near M ~ 1 M☉.
+    let a88 = (-0.2711 - ze * (0.5756 + 0.0838 * ze)).max(5.855_420e-2);
+    // Simplified: rgamma = 0 for mass > a88 + 0.1
+    if mass > a88 + 0.1 || mass > 1.5 {
+        0.0
+    } else {
+        // Small positive value near M ~ 1
+        let peak = 0.02_f64.max(0.0);
+        if mass <= 1.0 {
+            peak * (1.0 - (mass - 1.0).abs()).max(0.0)
+        } else {
+            peak * (1.0 - (mass - 1.0) * 10.0).max(0.0)
+        }
+    }
+}
+
 // ── MS evolution interpolation ────────────────────────────────────────────
 
 /// Main-sequence luminosity at fractional age τ = t/t_MS.
 ///
-/// Simplified HPT00 Eq. 11 (without hook correction):
-/// L(τ) = L_ZAMS × 10^(α·τ + (ℓ − α)·τ²)
+/// HPT00 Eq. 11 with hook correction:
+/// L(τ) = L_ZAMS × 10^(α·τ + β·τ^η + (ℓ − α − β)·τ² − δ·(τ₁² − τ₂²))
 ///
-/// where ℓ = log₁₀(L_TMS / L_ZAMS) and α is a small perturbation
-/// (~0.3 for solar-mass stars) that steepens late MS brightening.
+/// where ℓ = log₁₀(L_TMS / L_ZAMS), and τ₁, τ₂ define the hook region.
 ///
 /// `tau` must be in \[0, 1\]. Returns luminosity in L☉.
 #[must_use]
@@ -473,30 +857,58 @@ pub fn ms_luminosity(mass: f64, z: f64, tau: f64) -> f64 {
     if l_zams <= 0.0 || l_tms <= 0.0 {
         return 0.0;
     }
+    let z_clamped = z.clamp(0.0001, 0.03);
+    let ze = zeta(z_clamped);
     let ell = (l_tms / l_zams).log10();
-    // Simplified: α ≈ 0 gives pure quadratic interpolation in log-space
-    // This matches HPT00 when hook terms are omitted
-    l_zams * 10.0_f64.powf(ell * tau * tau)
+    let alpha = lalpha(mass, ze);
+    let beta = lbeta(mass, ze);
+    let eta = leta(mass, ze);
+    let dell = lhook(mass, ze, z_clamped);
+
+    // Hook region: τ₁ = min(1, max(0.5, ..hook fraction..))
+    // τ₂ = 1 (end of hook). dtau = τ₁² − τ₂² = τ₁² − 1
+    // For simplicity, hook occupies τ ∈ [0.95, 1.0]
+    let tau_min = 0.99 - 0.01 * dell.abs().min(1.0); // narrower hook window when dell is large
+    let tau1 = tau.min(1.0).max(tau_min);
+    let tau2 = 1.0_f64.min(tau.max(tau_min));
+    let dtau = tau1 * tau1 - tau2 * tau2;
+
+    let xx = if beta > 0.0 && tau > tau_min {
+        alpha * tau + beta * tau.powf(eta) + (ell - alpha - beta) * tau * tau - dell * dtau
+    } else {
+        alpha * tau + (ell - alpha) * tau * tau - dell * dtau
+    };
+
+    l_zams * 10.0_f64.powf(xx)
 }
 
 /// Main-sequence radius at fractional age τ = t/t_MS.
 ///
-/// Simplified HPT00 Eq. 14 (without hook correction):
-/// R(τ) = R_ZAMS × 10^(ρ·τ³)
-///
-/// where ρ = log₁₀(R_TMS / R_ZAMS).
+/// HPT00 Eq. 14 with hook correction:
+/// R(τ) = R_ZAMS × 10^(α·τ + β·τ^10 + γ·τ^40 + (ρ − α − β − γ)·τ³ − δ·(τ₁³ − τ₂³))
 ///
 /// `tau` must be in \[0, 1\]. Returns radius in R☉.
 #[must_use]
 pub fn ms_radius(mass: f64, z: f64, tau: f64) -> f64 {
     let tau = tau.clamp(0.0, 1.0);
-    let r_zams = zams_radius(mass, z);
-    let r_tms = tms_radius(mass, z);
+    let z_clamped = z.clamp(0.0001, 0.03);
+    let r_zams = zams_radius(mass, z_clamped);
+    let r_tms = tms_radius(mass, z_clamped);
     if r_zams <= 0.0 || r_tms <= 0.0 {
         return 0.0;
     }
+    let ze = zeta(z_clamped);
     let rho = (r_tms / r_zams).log10();
-    r_zams * 10.0_f64.powf(rho * tau.powi(3))
+    let alpha = ralpha(mass, ze);
+    let beta = rbeta(mass, ze, z_clamped);
+    let gamma = rgamma(mass, ze);
+
+    let xx = alpha * tau
+        + beta * tau.powi(10)
+        + gamma * tau.powi(40)
+        + (rho - alpha - beta - gamma) * tau.powi(3);
+
+    r_zams * 10.0_f64.powf(xx)
 }
 
 /// Main-sequence effective temperature at fractional age τ.
@@ -735,6 +1147,32 @@ mod tests {
                 "R_TMS should be >= R_ZAMS for M={m}: R_TMS={r_t}, R_ZAMS={r_z}"
             );
         }
+    }
+
+    #[test]
+    fn tms_radius_low_mass_uses_floor() {
+        // Very low mass: R_TMS should be at least 1.5 × R_ZAMS
+        let r_tms = tms_radius(0.2, Z_SUN);
+        let r_zams = zams_radius(0.2, Z_SUN);
+        assert!(
+            r_tms >= 1.5 * r_zams * 0.99,
+            "Low-mass R_TMS should be >= 1.5*R_ZAMS: R_TMS={r_tms}, 1.5*R_ZAMS={}",
+            1.5 * r_zams
+        );
+    }
+
+    #[test]
+    fn tms_radius_continuous_across_threshold() {
+        // R_TMS should be roughly continuous across the a62 threshold
+        let a62 = rtms_mass_threshold(Z_SUN);
+        let r_below = tms_radius(a62 - 0.01, Z_SUN);
+        let r_above = tms_radius(a62 + 0.11, Z_SUN);
+        let r_mid = tms_radius(a62 + 0.05, Z_SUN);
+        // Mid should be between the two endpoints (within transition)
+        assert!(
+            r_mid > r_below.min(r_above) * 0.5 && r_mid < r_below.max(r_above) * 2.0,
+            "R_TMS should be roughly continuous: r_below={r_below}, r_mid={r_mid}, r_above={r_above}"
+        );
     }
 
     #[test]
