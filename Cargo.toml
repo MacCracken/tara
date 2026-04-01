@@ -11,7 +11,7 @@ readme = "README.md"
 documentation = "https://docs.rs/tara"
 keywords = ["stellar", "astrophysics", "stars", "spectral", "nucleosynthesis"]
 categories = ["science", "simulation"]
-publish = false
+publish = true
 exclude = [".claude/", ".github/", "docs/", "scripts/"]
 
 [features]
